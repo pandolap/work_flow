@@ -30,8 +30,8 @@ def compareApproval(flow):
     if not flow["data"]["verifyflow"]:
         if data['data']['not_find_company']:
             flow["data"]["advice"].append('提示：机器人试运行，【审批矩阵找不到该公司】；')
-        else:
-            flow["data"]["advice"].append('提示：机器人试运行，【流程异常，请检查单据】；')
+        # else:
+        # flow["data"]["advice"].append('提示：机器人试运行，【流程异常，请检查单据】；')
         return
     webdata = []
     exdata = []
@@ -41,8 +41,8 @@ def compareApproval(flow):
             webdata.append(i[1])
 
     for k, v in flow["data"]["verifyflow"][0].items():
-        if v != "" and k not in ['费用类型_按金额判断', '部门_', '人员类别_', '报销人填单及扫描_', '_', '费用类型_'] or k.split("_")[0] in [
-            "部门领导1", "部门领导2", "本地财务1", "本地财务2", "本部财务1"]:
+        if v != "" and k not in ['费用类型_按金额判断', '部门_', '人员类别_', '报销人填单及扫描_', '_', '费用类型_'] \
+                or k.split("_")[0] in ["部门领导1", "部门领导2", "本地财务1", "本地财务2", "本部财务1"]:
             if "、" in v:
                 handle_v = v.split("、")
             elif "/" in v:
@@ -90,7 +90,7 @@ def compareApproval(flow):
 
 
 try:
-    data["data"]["advice"] = []
+    # data["data"]["advice"] = []
     if data["data"]["baseInfo"]["业务期间"].split("-")[1] != data["data"]["baseInfo"]["单据日期"].split("-")[1]:
         data["data"]["advice"].append("日期月份不一致；")
     handle_data(data)
