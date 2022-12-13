@@ -1,101 +1,176 @@
 #!/usr/bin/env python
 # -*- coding: UTF-8 -*-
 
-
-import json
 import os
-from datetime import datetime
-
-import openpyxl
+import time
+import json
 import requests
+import pandas as pd
+from datetime import datetime
+from requests_toolbelt import MultipartEncoder
 
-with open(r"") as f:
+# 接口地址
+INTERFACE_URL = "https://openapi.cmft.com/gateway/general1/1.0.0/api/pdfrec"
+INTERFACE_URL_BACKUP = "https://openapi.cmft.com:8080/gateway/general1/1.0.0/api/pdfrec"
+
+# DEBUG: 使用测试文件进行测试
+with open(r"C:\Users\Administrator\Downloads\48500008-GXAP-20221208-0024\48500008-GXAP-20221208-0024_pre.json") as f:
     flow = f.read()
 
+# 获取流程中的数据流
 data = json.loads(flow)
 
-url = data['data']['imgN'][0]
-local_company = data['data']['baseInfo']['公司']
-a = ''
-b = ''
 
-log_dir = data['config'].get('log_dir')
-No = data['data']['baseInfo']['单据编号']
-invoice_dir = os.path.join(os.path.join(log_dir, 'ocr与审批流运行数据'), No)
-if not os.path.exists(invoice_dir):
-    os.makedirs(invoice_dir)
-
-
-# local_company = "长海县广鹿码头建设管理有限公司"
-def download_jpg(url):
-    r = requests.get(url)
-    now = datetime.now().strftime('%Y%m%d_%H%M%S')
-    img_file = os.path.join(invoice_dir, now + '.jpg')
-    with open(img_file, "wb") as f:
-        f.write(r.content)
-    return img_file
+# 1、获取影像链接
+def get_image_url(data_source):
+    # 获取OCR链接和页面公司名称
+    img_urls = data_source.get("data").get("imgN")
+    cover_url = None
+    is_exist_img = False
+    # 判断链接是否存在
+    if img_urls:
+        is_exist_img = True
+        cover_url = img_urls[0]
+    return is_exist_img, cover_url
 
 
-def get_ocr_text(file_path):
-    request_url = "http://trial.web.glority.cn:8000/classify?type=20"
-    # 二进制方式打开图片文件
-    image_file = open(file_path, 'rb')
-    img = {"image_file": image_file}
-    response = requests.post(request_url, files=img)
-    return response
+# 2、OCR识别
+def download_img(cover_url, target_dir):
+    res = requests.get(cover_url)
+    if res.status_code != 200:
+        raise Exception("链接请求失败<{}>".format(cover_url))
+    now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    img_file_path = os.path.join(target_dir, '封面页{date}.jpg'.format(date=now_str))
+    with open(img_file_path, "wb") as mf:
+        mf.write(res.content)
+    return img_file_path
 
 
-# Todo url是影像系统里第一张图片的链接
-f = download_jpg(url)
-
-# 二进制方式打开图片文件
-# f =r"C:\RPA\辽港表格范例--V1.0\1.jpg"
-
-wb = openpyxl.load_workbook(r'C:\RPA\辽港表格范例--V1.0\辽港公司名单.xlsx')
-ws = wb.get_sheet_by_name('辽港集团')
-max_rows = ws.max_row
-company_list = []
-# 增加多次重试
-ocr_flag = 0
-tmp_response = get_ocr_text(f)
-text = tmp_response.json()
-while ocr_flag < 5:
-    if text.get('response'):
+def ocr_interface_call(cover_path, retry=5):
+    # 二进制方式打开封面图片
+    with open(cover_path, "rb") as mf:
+        image_file = mf.read()
+    # 请求负载数据
+    payload = MultipartEncoder(
+        fields={
+            "file": ("image.jpg", image_file),
+            "content": "multipart/form-data"
+        }
+    )
+    # 请求头
+    header = {
+        "Authorization": "ACCESSCODE 142717D9360287ED5BD1D03E1B6805D2",
+        "x-Gateway-APIKey": "b9180959-bb39-4f58-935a-bacc6a80d16c",
+        "Content-Type": payload.content_type,
+    }
+    res = None
+    # 重试
+    while retry:
+        # 发送请求
+        res = requests.post(INTERFACE_URL, data=payload, headers=header)
+        retry -= 1
+        # 请求没有成功
+        if res.status_code != 200:
+            res = None
+            time.sleep(1)
+            continue
+        # 识别结果错误
+        if json.loads(res.content).get("code") == "N":
+            time.sleep(1)
+            continue
         break
+    # 判断接口是否调用正常
+    if res is None:
+        raise Exception("OCR异常，接口调用失败")
     else:
-        ocr_flag += 1
-        tmp_response = get_ocr_text(f)
-        text = tmp_response.json()
-# 将封面页ocr数据保存
-cover_ocr_file = os.path.join(invoice_dir, '封面页OCR识别数据.json')
-with open(cover_ocr_file, "w", encoding='utf-8') as f:
-    json.dump(text, f)
-if text["response"] and isinstance(text["response"], list) and isinstance(text["response"][0], dict) and text["response"][0]:
-    words_list = text["response"][0]["text2"]
-    for irow in range(max_rows):
-        irow += 1
-        company_list.append(ws.cell(irow, 2).value)
-    for irow in range(max_rows):
-        irow += 1
-        sheet_company = ws.cell(irow, 2).value
-        # Todo local_company 是前面取到的公司名称；
-        if local_company == sheet_company:
-            discrip = ws.cell(irow, 3).value
-            if discrip is None:
-                discrip = ""
-            if "招商局港口" in words_list[:20]:
-                b = "【封面打印有误；请检查；】"
+        res = json.loads(res.content)
+    # 判断结果是否识别成功
+    if res.get("code") == "Y":
+        return res.get("details")[0]
+    else:
+        raise Exception("封面页异常，接口返回信息<{}>".format(res.get("message")))
+
+
+# 3、读取表格
+def read_excel(excel_path, sheet_name):
+    return pd.read_excel(excel_path, header=0, sheet_name=sheet_name)
+
+
+# 4、检测
+def excel_data_fmt(excel_data):
+    if pd.isna(excel_data):
+        return ""
+    return excel_data.strip()
+
+
+def check_data(company_data, interface_info, web_company):
+    # 循环检测数据
+    comment = ""
+    for row in company_data.itertuples():
+        excel_company = excel_data_fmt(getattr(row, "组织名称"))
+        if web_company == excel_company:
+            description = excel_data_fmt(getattr(row, "是否股份"))
+            if "招商局港口" in interface_info[0]:
+                comment = "【封面打印有误；请检查；】"
                 break
-            if "股份" in discrip and "股份" in words_list[:20]:
-                b = "打印封面正确；"
+            if "股份" in description and "辽港股份" in interface_info[0]:
+                comment = "打印封面正确；"
                 break
-            elif '太平湾' in discrip and '太平湾' in words_list[:20]:
-                b = "打印封面正确；"
+            elif "太平湾" in description and "招商局太平湾" in interface_info[0]:
+                comment = "打印封面正确；"
                 break
-            elif ("股份" not in discrip and '太平湾' not in discrip) and "集团" in words_list[:20]:
-                b = "打印封面正确；"
+            else:
+                comment = "打印封面正确；"
                 break
-if b == "":
-    b = "【封面打印有误；请检查；】"
-data['data']['verifyResult'] = data['data']['verifyResult'] + a + b
-flow = json.dumps(data)
+    if comment == "":
+        comment = "【封面打印有误；请检查；】"
+    return comment
+
+
+# 初始化
+def init(data_source):
+    web_company = data_source.get("data").get("baseInfo").get("公司")
+    log_dir = data_source.get("config").get("log_dir")
+    no = data_source.get("data").get("baseInfo").get("单据编号")
+    invoice_dir = os.path.join(os.path.join(log_dir, 'ocr与审批流运行数据'), no)
+    if not os.path.exists(invoice_dir):
+        os.makedirs(invoice_dir)
+    home_dir = data_source.get("config").get("home_dir")
+    excel_path = os.path.join(home_dir, "辽港公司名单.xlsx")
+    return web_company, invoice_dir, excel_path
+
+
+# 备份OCR结果
+def ocr_data_backup(ocr_data, target_dir):
+    cover_ocr_file = os.path.join(target_dir, '封面页OCR识别数据.json')
+    with open(cover_ocr_file, "w", encoding='utf-8') as mf:
+        json.dump(ocr_data, mf)
+
+
+def ocr_check(data_flow):
+    # 获取数据流中需要的值
+    (web_company, invoice_dir, excel_path) = init(data_flow)
+    # 获取影像链接
+    (is_exist_img, cover_url) = get_image_url(data_flow)
+    if is_exist_img:
+        # 下载图片
+        img_path = download_img(cover_url, invoice_dir)
+        # 调用OCR接口
+        res = ocr_interface_call(img_path)
+        # 备份识别结果
+        ocr_data_backup(res, invoice_dir)
+        # 取出核心数据
+        res_list = res.get("lines")
+        # 读取表格
+        pf = read_excel(excel_path, "辽港集团")
+        # 监测数据
+        approval_comment = check_data(pf, res_list, web_company)
+    else:
+        approval_comment = "【封面打印有误；请检查；】"
+    # 填写审批意见
+    data_flow['data']['verifyResult'] = data_flow['data']['verifyResult'] + " {}".format(approval_comment)
+    return data_flow
+
+
+# 运行
+flow = json.dumps(ocr_check(data))
