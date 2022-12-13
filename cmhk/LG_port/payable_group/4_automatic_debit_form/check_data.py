@@ -9,9 +9,10 @@ import os
 import traceback
 import datetime
 
+with open(r"E:\work\RPA\中间文件\flow\辽港\1\新建文件夹\40000001-FY-20220510-0001_自动扣款审批流.json", 'r', encoding='utf-8') as f:
+    flow = f.read()
 data = json.loads(flow)
-# with open(r"E:\work\RPA\中间文件\flow\辽港\1\新建文件夹\40000001-FY-20220510-0001_自动扣款审批流.json", 'r', encoding='utf-8') as f:
-#     data = json.load(f)
+
 log_dir = data['config'].get('log_dir')
 home_dir = data['config'].get('home_dir')
 No = data['data']['baseInfo']['单据编号']
@@ -93,9 +94,8 @@ def compareApproval(flow):
             else:
                 try:
 
-                    if float(flow["data"]["baseInfo"]["扣款金额"].replace(",",
-                                                                      "")) > int(
-                        re_obj.search(k).group().replace(">", "")):
+                    if float(flow["data"]["baseInfo"]["扣款金额"].replace(",", "")) > \
+                            int(re_obj.search(k).group().replace(">", "")):
                         if isinstance(handle_v, list):
                             exdata += handle_v
                             if not set(handle_v).intersection(webdata):

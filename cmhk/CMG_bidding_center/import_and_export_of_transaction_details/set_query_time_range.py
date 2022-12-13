@@ -5,6 +5,7 @@
 from util.config_util import get_config
 from datetime import datetime, timedelta
 import os
+
 # ARGS!>
 
 config = get_config().get("config")
@@ -42,6 +43,7 @@ def get_current_runtime_dir(config_dict):
     current_run_dir = os.path.join(output_path, current_run_date)
     # 3 返回当前运行文件夹
     return current_run_dir
+
 
 current_run_dir = get_current_runtime_dir(config)
 out_dir_path = os.path.join(current_run_dir, "old_detail", out_file_name)

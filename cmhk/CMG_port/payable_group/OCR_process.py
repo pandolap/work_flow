@@ -57,12 +57,17 @@ def keep_log(log_dir, keep_day):
             except:
                 pass
 
+
+with open(r"E:\fwz\log\港口\应付组\0995-GXAP-20221207-0001\flow.json", encoding="utf-8") as f:
+    flow = f.read()
+
 data = json.loads(flow)
-#keep_log(data['config']['log_dir'], data['config']['keep_day'])
+# keep_log(data['config']['log_dir'], data['config']['keep_day'])
 now_date = datetime.now().strftime('%Y-%m-%d')
 log_file_name = os.path.join(data['config']['log_dir'], '应付日志_%s.txt' % now_date)
 baseInfo = data['data']['baseInfo']
 home_dir = data['config']['home_dir']
+
 
 def log(s):
     with open(log_file_name, 'a', encoding='utf-8') as f:
@@ -164,12 +169,14 @@ for url_index, url in enumerate(url_dict_new):
                         max_row = table.max_row
                         for irow in range(max_row):
                             irow += 1
-                            relation = {table.cell(irow, sub_company_col).value: table.cell(irow, father_company_col).value}
+                            relation = {
+                                table.cell(irow, sub_company_col).value: table.cell(irow, father_company_col).value}
                             company_dict.update(relation)
                         if costBearingcompany in company_dict.keys():
                             costBearingcompany = company_dict[costBearingcompany]
 
-                        costBearingcompany = costBearingcompany.replace('（', '').replace('）', '').replace('(', '').replace(
+                        costBearingcompany = costBearingcompany.replace('（', '').replace('）', '').replace('(',
+                                                                                                          '').replace(
                             ')', '')
                         # advice = advice.replace('该单没有发票；','')
                         if buyer == costBearingcompany:
@@ -232,8 +239,8 @@ for url_index, url in enumerate(url_dict_new):
                         total = item['details']['total']
                         totalSum = totalSum + round(float(total), 2)
                         # 销售方名称
-                        seller = item['details']['seller'].strip().replace('(', '').replace(')', '').replace('（', '').replace(
-                            '）', '')
+                        seller = item['details']['seller'].strip().replace('(', '').replace(')', '').replace('（', '') \
+                            .replace('）', '')
                         # 销售方开户行及账号
                         if type == '1004':
                             pass
@@ -372,7 +379,8 @@ elif round(float(totalSum), 2) == 0:
 else:
     advice = advice + '【应付金额待核查】；'
 
-if bearing_flag == taxnumber_flag == seal_flag == formname_flag == receivebank_flag == seller_flag == collectionAccount_flag == flight_flag == seat_flag == None:
+if bearing_flag == taxnumber_flag == seal_flag == formname_flag == receivebank_flag == \
+        seller_flag == collectionAccount_flag == flight_flag == seat_flag is None:
     pass
 else:
     taxSum = round(float(taxSum), 2)
@@ -412,8 +420,8 @@ if '不一致' in advice or '没有' in advice or '超仓' in advice or '不通�
         a = a[:-1]
         advice += '【请检查第{}张影像】；'.format(a)
 
-if (
-        bearing_flag == taxnumber_flag == seal_flag == formname_flag == receivebank_flag == seller_flag == collectionAccount_flag == flight_flag == seat_flag == None):
+if (bearing_flag == taxnumber_flag == seal_flag == formname_flag == receivebank_flag ==
+        seller_flag == collectionAccount_flag == flight_flag == seat_flag is None):
     advice = advice + '【没有检测到发票】；'
 
 log('\nocr一次处理\n结果：\n')

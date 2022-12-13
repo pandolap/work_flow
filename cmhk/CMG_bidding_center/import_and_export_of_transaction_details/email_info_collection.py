@@ -10,6 +10,9 @@ g_err_image = ""
 input_file_path = r"C:\RPA\招商_招投标中心_交易明细导入导出\output\20221205\银行账户交易明细导入2022-12-05.xlsx"
 err_date = []
 ex_msg = "程序异常-我也不知道啥问题"
+step_name = ""
+is_err_end = False
+result = {}
 
 
 # START
@@ -38,8 +41,8 @@ def fail_process(image_path, ex, out_file):
     Dear 业务老师，
     \n\t招投标中心RPA流程-交易明细导入导出运行结束，流程运行失败，具体原因请查看异常截图。
     \n\t请重新启动或者联系运维人员！
-    \n\t异常提示信息：%s
-    """ % ex
+    \n\t异常提示信息：%s 步骤，%s
+    """ % (step_name, ex)
     enclosures = []
     if os.path.exists(image_path):
         enclosures.append(image_path)
@@ -50,7 +53,7 @@ def fail_process(image_path, ex, out_file):
 
 def get_email_info(image_path, error_date, ex, out_file):
     # 判断是否运行成功
-    if ex:
+    if not is_err_end:
         # 失败
         (title, context, enclosures) = fail_process(image_path, ex, out_file)
     else:
@@ -60,7 +63,7 @@ def get_email_info(image_path, error_date, ex, out_file):
 
 
 # END$>
-(mail_title, mail_context, enclosure) = get_email_info(g_err_image, err_date, ex_msg, input_file_path)
+(mail_title, mail_context, enclosure) = get_email_info(g_err_image, err_date, result, input_file_path)
 
 print(mail_title)
 print(mail_context)
