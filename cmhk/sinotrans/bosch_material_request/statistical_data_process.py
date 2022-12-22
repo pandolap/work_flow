@@ -5,36 +5,43 @@
 
 import os
 import shutil
-
 import openpyxl
+import numpy as np
 import pandas as pd
+from barcode import Code128
 from datetime import datetime
 import win32com.client as win32
-from openpyxl import load_workbook
-import numpy as np
+from barcode.writer import ImageWriter
+from openpyxl.drawing.image import Image
+from pystrich.code128 import Code128Encoder
 from openpyxl.styles import Font, Border, Alignment, Side
-from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, TwoCellAnchor
 
 from util.config_util import get_config
 
 # 入参
-dirs = {'input': r'C:\\RPA\\中外运_博世叫料\\input', 'output': r'C:\\RPA\\中外运_博世叫料\\output',
-        'runtime': r'C:\\RPA\\中外运_博世叫料\\output\\20221219', 'output_back': r'C:\\RPA\\中外运_博世叫料\\output_back',
-        'runtime_back': r'C:\\RPA\\中外运_博世叫料\\output_back\\20221219', 'log': r'C:\\RPA\\中外运_博世叫料\\output\\20221219\\log',
-        'screenshot': r'C:\\RPA\\中外运_博世叫料\\output\\20221219\\err_img',
-        'download': r'C:\\RPA\\中外运_博世叫料\\output\\20221219\\download',
-        'supply_order': r'C:\\RPA\\中外运_博世叫料\\output\\20221219\\order'}
+dirs = {
+    'input': r'C:\\RPA\\中外运_博世叫料\\input',
+    'output': r'C:\\RPA\\中外运_博世叫料\\output',
+    'runtime': r'C:\\RPA\\中外运_博世叫料\\output\\20221219',
+    'output_back': r'C:\\RPA\\中外运_博世叫料\\output_back',
+    'runtime_back': r'C:\\RPA\\中外运_博世叫料\\output_back\\20221219',
+    'log': r'C:\\RPA\\中外运_博世叫料\\output\\20221219\\log',
+    'screenshot': r'C:\\RPA\\中外运_博世叫料\\output\\20221219\\err_img',
+    'download': r'C:\\RPA\\中外运_博世叫料\\output\\20221219\\download',
+    'supply_order': r'C:\\RPA\\中外运_博世叫料\\output\\20221219\\order'
+}
 
 # 邮箱附件地址
 attach_path = r"C:\RPA\中外运_博世叫料\output\20221215\download\邮箱附件.xlsx"
-#
+# 邮箱映射
 supplier_email = {
     "DL": "aoyucs@163.com",
     "MYS": "Fupj@szmys.com",
     "YT": "53237761@qq.com",
     "WZXC": "cssales2@szwzxc.com",
 }
-
+# 文件映射
 file_dict = {
     "attach": r"C:\RPA\中外运_博世叫料\output\20221219\download\20221209_SAP_97506873.xlsx",
     "export": r"C:\\RPA\\中外运_博世叫料\\output\\20221219\\download\\111平台-BSZZ01-库存即时报表（自用）.xlsx",
@@ -42,7 +49,7 @@ file_dict = {
     "supply": r"C:\\RPA\\中外运_博世叫料\\output\\20221219\\供应商送货单.xlsx",
     "material": r"C:\\RPA\\中外运_博世叫料\\output\\20221219\\原材料需求叫料.xlsx"
 }
-
+# 缩写映射
 abbr_dict = {
     "鼎立": "DL",
     "王子新材": "WZXC",
@@ -224,23 +231,50 @@ def subtotal_data(supplier_name, supplier_abbr, group_data):
 
 
 def load_template(file_path, data):
+    """
+    加载模板
+    :param file_path: 模板文件
+    :param data: 将要写入的数据
+    """
+    # 读取模板文件格式表
     df = pd.read_excel(file_path, header=1)
+    # 将数据填入格式表中
     for row in data:
         df.loc[len(df)] = row
-    print(df)
+    # 导出数据为二维数组
     out_value = df.values
+    # 获取导入数据量
     idx = len(out_value)
+    # 打开模板文件
     wb = openpyxl.load_workbook(file_path)
+    # 激活第一个sheet
     sheet = wb.active
-
+    # 将数据写入文档
     for i in range(0, idx):
         for j in range(0, len(out_value[i])):
             cell = sheet.cell(row=2 + i + 1, column=j + 1, value=out_value[i][j])
+            # 设置单元格样式
             set_cell_style_by_export(cell)
+    # 保存结果并关闭链接
     wb.save(file_path)
+    wb.close()
 
 
-def generate_order_by_supply(order, data, supply_file):
+def get_barcode(code, img_path):
+    encode = Code128(code, writer=ImageWriter())
+    encode.save(img_path, options={
+        'font_size': 3,
+        'quiet_zone': 1,
+        'module_width': 0.173,
+        'module_height': 4,
+        'text_distance': 1.3
+    })
+    # encode = Code128Encoder(code)
+    # encode.save(img_path)
+    return "{}.png".format(img_path)
+
+
+def generate_order_by_supply(order, data, supply_file, to_dir):
     data_list = []
     # 获取需要的数据
     row_idx = 0
@@ -268,6 +302,24 @@ def generate_order_by_supply(order, data, supply_file):
 
     # 单号
     sheet.cell(row=2, column=1, value=order)
+
+    # 条码
+    barcode_path = os.path.join(to_dir, "barcode", order)
+    barcode_path = get_barcode(order, barcode_path)
+    barcode_img = Image(barcode_path)
+    # 计算条码长宽
+    # img_height = sheet.row_dimensions[2].height
+    # img_width = sheet.column_dimensions["E"].width + sheet.column_dimensions["F"].width + \
+    #             sheet.column_dimensions["G"].width
+    # 508 img_height * 3.26
+    # barcode_img.height = 55
+    # img_width * 3.11
+    # barcode_img.width = 345
+    # _from = AnchorMarker(7, 50000, 1, 50000)
+    # to = AnchorMarker(7, -50000, 1, -50000)
+    # barcode_img.anchor = TwoCellAnchor('twoCell', _from, to)
+    sheet.add_image(barcode_img, "E2")
+
     idx = len(data_list)
     for i in range(0, idx):
         for j in range(0, len(data_list[i])):
@@ -279,6 +331,7 @@ def generate_order_by_supply(order, data, supply_file):
     sheet.row_dimensions[3 + idx + 1].height = "25"
     sheet.cell(row=3 + idx + 1, column=1, value="送货人：")
     sheet.cell(row=3 + idx + 1, column=5, value="收货人：")
+    # 合并单元格
     # 保存
     wb.save(supply_file)
     wb.close()
@@ -294,7 +347,7 @@ def generate_supply_order(supply_name, supply_data, supply_file, to_dir):
         out_file_name = "{}供货单{}.xlsx".format(supply_name, no)
         out_path = os.path.join(to_dir, out_file_name)
         shutil.copyfile(supply_file, out_path)
-        supply_list.append(generate_order_by_supply(no, supply_data, out_path))
+        supply_list.append(generate_order_by_supply(no, supply_data, out_path, to_dir))
 
     return supply_list
 
@@ -341,6 +394,75 @@ def make_storage_template(tool, template, supply_file, to_dir):
     return supply_list
 
 
+def get_formula_list(row):
+    # 整理公式
+    formulas = []
+    # 合计公式
+    total = "=SUM(B{num}:O{num})".format(num=row)
+    formulas.append(total)
+    # 成品库存
+    finish_inventory = "=IFERROR(VLOOKUP(A{num},原材料、成品库存透视表!$A$1:$C$1000,3,0),0)".format(num=row)
+    formulas.append(finish_inventory)
+    # 1-4订单
+    order_1_4 = "=MAX(IF(ISERROR(VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*4),(B{num}+C{num}+D{num}+E{num})," \
+                "VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*4),(B{num}+C{num}+D{num}+E{num})," \
+                "IF(ISERROR(VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*4),(B{num}+C{num}+D{num}+E{num})," \
+                "VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*4))-Q{num}".format(num=row)
+    formulas.append(order_1_4)
+    # 5-9订单
+    order_5_9 = "=MAX(IF(ISERROR(VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*5),(F{num}+G{num}+H{num}+I{num}+J{num})," \
+                "VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*5),(F{num}+G{num}+H{num}+I{num}+J{num})," \
+                "IF(ISERROR(VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*5),(F{num}+G{num}+H{num}+I{num}+J{num})," \
+                "VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*5))-IF(R{num}<0,-R{num},0)".format(num=row)
+    formulas.append(order_5_9)
+    # 10-14订单
+    order_10_14 = "=MAX(IF(ISERROR(VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*5),(K{num}+L{num}+M{num}+N{num}+O{num})," \
+                  "VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*5),(K{num}+L{num}+M{num}+N{num}+O{num})," \
+                  "IF(ISERROR(VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*5),(K{num}+L{num}+M{num}+N{num}+O{num})," \
+                  "VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*5))-IF(S{num}<0,-S{num},0)".format(num=row)
+    formulas.append(order_10_14)
+    return formulas
+
+
+def get_excel_len(in_sheet, is_col):
+    if is_col:
+        return len([i for i in in_sheet[1] if i.value is not None])
+    else:
+        return len([i for i in in_sheet if i[0].value is not None])
+
+
+def compare_data_process(to_file, from_file):
+    # 1、对被连个数据源的行数
+    to_wb = openpyxl.load_workbook(to_file)
+    from_wb = openpyxl.load_workbook(from_file)
+    to_sheet = to_wb["需求"]
+    from_sheet = from_wb.active
+    # 获取各自最大行数
+    to_len = to_sheet.max_row
+    from_len = get_excel_len(from_sheet, False)
+    if to_len > from_len:
+        # 2、多余的行删除
+        print("删除叫料表中多余的行数")
+        to_sheet.delete_rows(from_len + 1, to_len)
+    elif to_len < from_len:
+        # 3、缺少的行补充
+        print("补充叫料表中缺少的行数")
+        diff_row = from_len - to_len
+        sign_col_idx = 15
+        for i in range(0, diff_row):
+            current_idx = to_len + i + 1
+            formulas = get_formula_list(current_idx)
+            for j in range(0, len(formulas)):
+                cell = to_sheet.cell(row=current_idx, column=sign_col_idx + j + 1, value=formulas[j])
+                set_cell_style_by_export(cell)
+    else:
+        print("叫料表和附件数据表行数相等")
+    # 关掉链接
+    to_wb.save(to_file)
+    to_wb.close()
+    from_wb.close()
+
+
 def statistical_data(files, in_dirs):
     """
     $统计中心：主方法
@@ -356,6 +478,8 @@ def statistical_data(files, in_dirs):
         material_tool = files.get("material")
         # 2、获取附件表格进行处理
         attach_excel = files.get("attach")
+        # NEW~ 2.1 新增将附件表格与叫料表格进行对比
+        compare_data_process(material_tool, attach_excel)
         # 拷贝表格的数据
         copy_excel_data(attach_excel, material_tool, "需求", "B,D:Q")
         # 3、获取系统库存导出数据进行处理
