@@ -62,6 +62,9 @@ def flow_init(work_dir):
     # 下载文件目录
     download_dir = os.path.join(current_dir, "download")
     check_dir(download_dir, True)
+    # 供货单目录
+    order_dir = os.path.join(current_dir, "order")
+    check_dir(order_dir, True)
     # 将路径写入字典中
     dirs.setdefault("input", os.path.join(work_dir, "input"))
     dirs.setdefault("output", output_dir)
@@ -71,7 +74,26 @@ def flow_init(work_dir):
     dirs.setdefault("log", log_dir)
     dirs.setdefault("screenshot", err_img_dir)
     dirs.setdefault("download", download_dir)
-    return dirs
+    dirs.setdefault("supply_order", order_dir)
+
+    # copy模板文件
+    input_dir = os.path.join(work_dir, "input")
+    _template = os.path.join(input_dir, "原材料入库模板.xlsx")
+    _supply = os.path.join(input_dir, "供应商送货单.xlsx")
+    _material = os.path.join(input_dir, "原材料需求叫料.xlsx")
+    template = os.path.join(current_dir, "原材料入库模板.xlsx")
+    supply = os.path.join(current_dir, "供应商送货单.xlsx")
+    material = os.path.join(current_dir, "原材料需求叫料.xlsx")
+    shutil.copyfile(_supply, supply)
+    shutil.copyfile(_template, template)
+    shutil.copyfile(_material, material)
+
+    files = {
+        "template": template,
+        "supply": supply,
+        "material": material
+    }
+    return dirs, files
 
 
 def check_work_dir(in_config):
@@ -92,6 +114,6 @@ def check_work_dir(in_config):
 
 
 # 执行
-dir_dict = check_work_dir(config)
+(dir_dict, file_dict) = check_work_dir(config)
 
 print(json.dumps(dir_dict, indent=2, ensure_ascii=False))

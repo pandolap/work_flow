@@ -54,7 +54,11 @@ abbr_dict = {
     "鼎立": "DL",
     "王子新材": "WZXC",
     "美盈森": "MYS",
-    "裕同": "YT"
+    "裕同": "YT",
+    "博世": "BS",
+    "康乐": "KL",
+    "沈阳防锈": "SYFX",
+    "鑫潞": "XL"
 }
 
 print(supplier_email)
