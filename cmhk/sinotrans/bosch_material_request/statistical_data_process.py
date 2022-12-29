@@ -5,6 +5,7 @@
 
 import os
 import shutil
+import zipfile
 import openpyxl
 import numpy as np
 import pandas as pd
@@ -13,27 +14,24 @@ from datetime import datetime
 import win32com.client as win32
 from barcode.writer import ImageWriter
 from openpyxl.drawing.image import Image
-from pystrich.code128 import Code128Encoder
 from openpyxl.styles import Font, Border, Alignment, Side
-from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, TwoCellAnchor
 
-from util.config_util import get_config
 
 # 入参
 dirs = {
     'input': r'C:\\RPA\\中外运_博世叫料\\input',
     'output': r'C:\\RPA\\中外运_博世叫料\\output',
-    'runtime': r'C:\\RPA\\中外运_博世叫料\\output\\20221219',
+    'runtime': r'C:\\RPA\\中外运_博世叫料\\output\\20221229',
     'output_back': r'C:\\RPA\\中外运_博世叫料\\output_back',
-    'runtime_back': r'C:\\RPA\\中外运_博世叫料\\output_back\\20221219',
-    'log': r'C:\\RPA\\中外运_博世叫料\\output\\20221219\\log',
-    'screenshot': r'C:\\RPA\\中外运_博世叫料\\output\\20221219\\err_img',
-    'download': r'C:\\RPA\\中外运_博世叫料\\output\\20221219\\download',
-    'supply_order': r'C:\\RPA\\中外运_博世叫料\\output\\20221219\\order'
+    'runtime_back': r'C:\\RPA\\中外运_博世叫料\\output_back\\20221229',
+    'log': r'C:\\RPA\\中外运_博世叫料\\output\\20221229\\log',
+    'screenshot': r'C:\\RPA\\中外运_博世叫料\\output\\20221229\\err_img',
+    'download': r'C:\\RPA\\中外运_博世叫料\\output\\20221229\\download',
+    'supply_order': r'C:\\RPA\\中外运_博世叫料\\output\\20221229\\order'
 }
 
 # 邮箱附件地址
-attach_path = r"C:\RPA\中外运_博世叫料\output\20221215\download\邮箱附件.xlsx"
+# attach_path = r"C:\RPA\中外运_博世叫料\output\20221215\download\邮箱附件.xlsx"
 # 邮箱映射
 supplier_email = {
     "DL": "aoyucs@163.com",
@@ -43,11 +41,12 @@ supplier_email = {
 }
 # 文件映射
 file_dict = {
-    "attach": r"C:\RPA\中外运_博世叫料\output\20221219\download\20221209_SAP_97506873.xlsx",
-    "export": r"C:\\RPA\\中外运_博世叫料\\output\\20221219\\download\\111平台-BSZZ01-库存即时报表（自用）.xlsx",
-    "template": r"C:\\RPA\\中外运_博世叫料\\output\\20221219\\原材料入库模板.xlsx",
-    "supply": r"C:\\RPA\\中外运_博世叫料\\output\\20221219\\供应商送货单.xlsx",
-    "material": r"C:\\RPA\\中外运_博世叫料\\output\\20221219\\原材料需求叫料.xlsx"
+    "attach": r"C:\RPA\中外运_博世叫料\output\20221229\download\20221228_SAP_97506873.xlsx",
+    "export": r"C:\\RPA\\中外运_博世叫料\\output\\20221229\\download\\111平台-BSZZ01-库存即时报表（自用）.xlsx",
+    "template": r"C:\\RPA\\中外运_博世叫料\\output\\20221229\\原材料入库模板.xlsx",
+    "supply": r"C:\\RPA\\中外运_博世叫料\\output\\20221229\\供应商送货单.xlsx",
+    "material": r"C:\\RPA\\中外运_博世叫料\\output\\20221229\\原材料需求叫料.xlsx",
+    "not_receipt": r"C:\\RPA\\中外运_博世叫料\\output\\20221229\\download\\已叫料但未收货.xlsx"
 }
 # 缩写映射
 abbr_dict = {
@@ -76,6 +75,20 @@ def check_file_exist(*target_files):
         return False, target_files
 
 
+# 多文件压缩
+def files_zip(to_zip_path: str, zip_name: str, files: list) -> str:
+    # 获取一个
+    zip_path = os.path.join(to_zip_path, "{}.zip".format(zip_name))
+    # 如果存在则删除原有的
+    if os.path.exists(zip_path):
+        os.remove(zip_path)
+    with zipfile.ZipFile(zip_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for f in files:
+            parent_path, file_name = os.path.split(f)
+            zf.write(f, arcname=file_name)
+    return zip_path
+
+
 # 将dataframe数据组合成二维数据
 def copy_process(df_copy):
     # 处理将要拷贝的数据
@@ -86,7 +99,7 @@ def copy_process(df_copy):
 
 
 # 对原有数据进行覆写
-def form_override(data, target_file, sheet_name=None):
+def form_override(data, target_file, sheet_name=None, start_row=0):
     # 检测文件的正确性
     (is_exist, files) = check_file_exist(target_file)
     if data and is_exist and sheet_name:
@@ -104,7 +117,8 @@ def form_override(data, target_file, sheet_name=None):
                 for row in range(0, row_max):
                     for col in range(0, len(data[row])):
                         # 写入一个单元格
-                        sheet.cell(row=row + 1, column=col + 1, value=data[row][col])
+                        sheet.cell(row=start_row + 1, column=col + 1, value=data[row][col])
+                    start_row += 1
                 # 将数据保存
                 wb.save(target_file)
             except Exception as e:
@@ -116,24 +130,6 @@ def form_override(data, target_file, sheet_name=None):
             raise TypeError("传入的覆写数据类型错误")
     else:
         raise ValueError("覆写数据未空或是目标文件错误")
-
-
-# 对附件数据进行处理
-def attachment_process(attach_file, tool_file):
-    # 检测文件的正确性
-    (is_exist, files) = check_file_exist(attach_file, tool_file)
-    if is_exist:
-        # 将附件的A和C列删除，当天的数据还未统计完成所以应该剔除C列
-        df = pd.read_excel(attach_file, usecols="B,D:Q")
-        # 拷贝数据转换
-        copy_data = copy_process(df)
-        # 将数据写入目标文件
-        form_override(copy_data, tool_file, "需求")
-    else:
-        if files:
-            raise FileNotFoundError("下载的邮箱附件未找到|<{}>".format(files))
-        else:
-            raise ValueError("传入的文件值为空|<{}>".format(files))
 
 
 # 刷新表格文件
@@ -160,23 +156,31 @@ def excel_refresh(target_excel):
 
 
 # 系统库存导出数据写入 => 进化 = 通用拷贝表格数据方法
-def copy_excel_data(from_file, to_file, to_sheet, copy_area=None):
+def copy_excel_data(from_file, to_file, to_sheet=None, from_row=0, is_cover=True, copy_area=None):
     """
     将源自A表中的n列数据拷贝到B表中
     :param from_file: 数据来源文件
     :param to_file: 数据去向文件
     :param to_sheet: 拷贝到的表格sheet名默认为第一个
+    :param from_row: 数据来源从第几行开始
+    :param is_cover: 拷贝是否覆盖原有数据行
     :param copy_area: 拷贝来源的范围列入："A,C,D:Q"
     """
     # 检测文件的正确性
     (is_exist, files) = check_file_exist(from_file, to_file)
     if is_exist:
         # 读取导出数据【物料代码】和【未分配】
-        df = pd.read_excel(from_file, usecols=copy_area)
+        df = pd.read_excel(from_file, header=from_row, usecols=copy_area)
         # 处理拷贝数据
         copy_data = copy_process(df)
         # 将数据写入目标文件
-        form_override(copy_data, to_file, to_sheet)
+        if is_cover:
+            form_override(copy_data, to_file, to_sheet)
+        else:
+            # 计算当前有多少行数据
+            df = pd.read_excel(to_file, to_sheet)
+            exist_row = len(df.index)
+            form_override(copy_data, to_file, to_sheet, exist_row + 1)
     else:
         if files:
             raise FileNotFoundError("文件未找到|<{}>".format(files))
@@ -222,12 +226,20 @@ def subtotal_data(supplier_name, supplier_abbr, group_data):
             no = "{}{}{}".format(current_time, supplier_abbr, "1-4")
             export_data.append(create_export_data(no, supplier_name, goods_code, batch_1_4, stock_local))
         # 批次5-9
-        batch_5_9 = int(getattr(row, "_2")) - batch_1_4
+        if batch_1_4 < 0:
+            batch_1_4 = abs(batch_1_4)
+        else:
+            batch_1_4 = 0
+        batch_5_9 = int(getattr(row, "_3")) - batch_1_4
         if batch_5_9 > 0:
             no = "{}{}{}".format(current_time, supplier_abbr, "5-9")
             export_data.append(create_export_data(no, supplier_name, goods_code, batch_5_9, stock_local))
         # 批次10-14
-        batch_10_14 = int(getattr(row, "_3")) - batch_5_9
+        if batch_5_9 < 0:
+            batch_5_9 = abs(batch_5_9)
+        else:
+            batch_5_9 = 0
+        batch_10_14 = int(getattr(row, "_2")) - batch_5_9
         if batch_10_14 > 0:
             no = "{}{}{}".format(current_time, supplier_abbr, "10-14")
             export_data.append(create_export_data(no, supplier_name, goods_code, batch_10_14, stock_local))
@@ -265,8 +277,11 @@ def load_template(file_path, data):
 
 
 def get_barcode(code, img_path):
+    if not os.path.exists(img_path):
+        os.makedirs(img_path)
     encode = Code128(code, writer=ImageWriter())
-    encode.save(img_path, options={
+    file_path = os.path.join(img_path, code)
+    encode.save(file_path, options={
         'font_size': 3,
         'quiet_zone': 1,
         'module_width': 0.173,
@@ -275,7 +290,7 @@ def get_barcode(code, img_path):
     })
     # encode = Code128Encoder(code)
     # encode.save(img_path)
-    return "{}.png".format(img_path)
+    return "{}.png".format(file_path)
 
 
 def generate_order_by_supply(order, data, supply_file, to_dir):
@@ -308,17 +323,17 @@ def generate_order_by_supply(order, data, supply_file, to_dir):
     sheet.cell(row=2, column=1, value=order)
 
     # 条码
-    barcode_path = os.path.join(to_dir, "barcode", order)
-    barcode_path = get_barcode(order, barcode_path)
+    barcode_folder = os.path.join(to_dir, "barcode")
+    barcode_path = get_barcode(order, barcode_folder)
     barcode_img = Image(barcode_path)
     # 计算条码长宽
     # img_height = sheet.row_dimensions[2].height
     # img_width = sheet.column_dimensions["E"].width + sheet.column_dimensions["F"].width + \
     #             sheet.column_dimensions["G"].width
     # 508 img_height * 3.26
-    # barcode_img.height = 55
+    barcode_img.height = 60
     # img_width * 3.11
-    # barcode_img.width = 345
+    barcode_img.width = 325
     # _from = AnchorMarker(7, 50000, 1, 50000)
     # to = AnchorMarker(7, -50000, 1, -50000)
     # barcode_img.anchor = TwoCellAnchor('twoCell', _from, to)
@@ -361,7 +376,7 @@ def set_cell_style_by_export(cell):
     font = Font(size=11, vertAlign='baseline')
     # 边框
     side = Side(border_style='thin', color='000000')
-    border = Border(left=side, right=side, top=side, end=side)
+    border = Border(left=side, right=side, top=side, bottom=side)
     # 对齐
     align = Alignment(horizontal='center', vertical='center')
     # cell
@@ -376,8 +391,8 @@ def make_storage_template(tool, template, supply_file, to_dir):
     df = pd.read_excel(tool, sheet_name="BOM")
     # 2、制作数据透视表
     df_pivot = pd.pivot_table(df, index=["子件料号二级", "半成品库存", "供应商", "库位"],
-                              values=["1-4日订单数量\n（加急）", "5-9日订单数量", "10-14日订单数量"],
-                              aggfunc={"1-4日订单数量\n（加急）": np.sum, "5-9日订单数量": np.sum, "10-14日订单数量": np.sum},
+                              values=["1-4日分料数量", "5-9日分料数量", "10-14日分料数量"],
+                              aggfunc={"1-4日分料数量": np.sum, "5-9日分料数量": np.sum, "10-14日分料数量": np.sum},
                               margins=False)
     # 3、按供应商分类数据
     export_data = []
@@ -385,12 +400,20 @@ def make_storage_template(tool, template, supply_file, to_dir):
     supply_list = dict()
     for k, v in abbr_dict.items():
         supplier_type = k
+        # 供货商供货单名称
+        zip_name = "供应商{}供货单".format(supplier_type)
+        # NEW~ 王子新材你是特殊的
         if k == "王子新材":
             supplier_type = "王子"
         group_data = df_pivot.query("供应商 == ['{}']".format(supplier_type))
         tmp = subtotal_data(k, v, group_data)
         file_list = generate_supply_order(k, tmp, supply_file, to_dir)
-        supply_list.setdefault(k, file_list)
+        # NEW~ 将单一供货商的供货单据打包发送 PS: foxmail罪大恶极！！！
+        to_zip = os.path.join(to_dir, "zip")
+        if not os.path.exists(to_zip):
+            os.makedirs(to_zip)
+        zip_f = files_zip(to_zip, zip_name, file_list)
+        supply_list.setdefault(k, [zip_f])
         export_data.extend(tmp)
     sort_data = sorted(export_data, key=lambda x: x.get("外部订单号"))
     # 导入模板
@@ -405,7 +428,7 @@ def get_formula_list(row):
     total = "=SUM(B{num}:O{num})".format(num=row)
     formulas.append(total)
     # 成品库存
-    finish_inventory = "=IFERROR(VLOOKUP(A{num},原材料、成品库存透视表!$A$1:$C$1000,3,0),0)".format(num=row)
+    finish_inventory = "=IFERROR(VLOOKUP(A{num},原材料、成品库存透视表!$A$1:$C$1000,2,0),0)".format(num=row)
     formulas.append(finish_inventory)
     # 1-4订单
     order_1_4 = "=MAX(IF(ISERROR(VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*4),(B{num}+C{num}+D{num}+E{num})," \
@@ -485,12 +508,16 @@ def statistical_data(files, in_dirs):
         # NEW~ 2.1 新增将附件表格与叫料表格进行对比
         compare_data_process(material_tool, attach_excel)
         # 拷贝表格的数据
-        copy_excel_data(attach_excel, material_tool, "需求", "B,D:Q")
+        copy_excel_data(attach_excel, material_tool, "需求", copy_area="B,D:Q")
         # 3、获取系统库存导出数据进行处理
         export_excel = files.get("export")
         # 同样也是拷贝表格的数据
-        copy_excel_data(export_excel, material_tool, "系统库存导出数据", "B,T")
+        copy_excel_data(export_excel, material_tool, "系统库存导出数据", copy_area="B,T")
+        # 获取已叫料但未收货数据
+        not_receipt_excel = files.get("not_receipt")
+        copy_excel_data(not_receipt_excel, material_tool, "系统库存导出数据", from_row=1, is_cover=False, copy_area="D,E")
         # 4、对工具表格进行刷数据
+        excel_refresh(material_tool)
         excel_refresh(material_tool)
         # 5、制作导入模板和供货单
         template_file = files.get("template")
