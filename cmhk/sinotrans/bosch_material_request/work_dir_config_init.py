@@ -4,8 +4,9 @@
 # 工作目录配置初始化及检查
 
 import os
-from datetime import datetime
 import shutil
+import pandas as pd
+from datetime import datetime
 
 import json
 from util.config_util import get_config
@@ -13,6 +14,24 @@ from util.config_util import get_config
 # 入参
 # config = config_dict
 config = get_config().get("config")
+
+
+def read_setting(setting_file):
+    # 获取邮箱
+    df = pd.read_excel(setting_file, header=1, sheet_name="邮箱")
+    mail_dict = dict()
+    for row in df.itertuples():
+        supply_name = getattr(row, "供货商名称")
+        mail_box = getattr(row, "邮箱")
+        mail_dict.setdefault(supply_name, mail_box)
+    # 获取缩写
+    df = pd.read_excel(setting_file, header=1, sheet_name="缩写")
+    abbrs = dict()
+    for row in df.itertuples():
+        supply_name = getattr(row, "供货商名称")
+        abbr = getattr(row, "缩写")
+        abbrs.setdefault(supply_name, abbr)
+    return mail_dict, abbrs
 
 
 def check_dir(target_dir, is_create=False, is_overwrite=True):
@@ -52,7 +71,8 @@ def flow_init(work_dir):
     # 输出备份目录
     output_back_dir = os.path.join(work_dir, "output_back")
     check_dir(output_back_dir, True, False)
-    current_back_dir = runtime_dir_create(output_back_dir)
+    current_back_dir = os.path.join(output_back_dir, "output_{}".format(datetime.now().strftime("%Y%m%d-%H%M%S")))
+    check_dir(current_back_dir, True)
     # 当前运行日志目录
     log_dir = os.path.join(current_dir, "log")
     check_dir(log_dir, True)
@@ -81,17 +101,21 @@ def flow_init(work_dir):
     _template = os.path.join(input_dir, "原材料入库模板.xlsx")
     _supply = os.path.join(input_dir, "供应商送货单.xlsx")
     _material = os.path.join(input_dir, "原材料需求叫料.xlsx")
+    _setting = os.path.join(input_dir, "供货商邮箱配置.xlsx")
     template = os.path.join(current_dir, "原材料入库模板.xlsx")
     supply = os.path.join(current_dir, "供应商送货单.xlsx")
     material = os.path.join(current_dir, "原材料需求叫料.xlsx")
+    setting = os.path.join(current_dir, "供货商邮箱配置.xlsx")
     shutil.copyfile(_supply, supply)
     shutil.copyfile(_template, template)
     shutil.copyfile(_material, material)
+    shutil.copyfile(_setting, setting)
 
     files = {
         "template": template,
         "supply": supply,
-        "material": material
+        "material": material,
+        "setting": setting
     }
     return dirs, files
 
@@ -114,6 +138,9 @@ def check_work_dir(in_config):
 
 
 # 执行
+# 获取文件和文件夹映射
 (dir_dict, file_dict) = check_work_dir(config)
+# 获取邮箱和缩写映射
+(supplier_email, abbr_dict) = read_setting(file_dict.get("setting"))
 
 print(json.dumps(dir_dict, indent=2, ensure_ascii=False))

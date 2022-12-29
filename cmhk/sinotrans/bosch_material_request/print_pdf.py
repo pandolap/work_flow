@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: UTF-8 -*-
-import tempfile
 import win32api
 import win32print
 
