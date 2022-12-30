@@ -36,7 +36,12 @@ def assign_mailbox(supply_en):
     mail_title = "供应商{}供货单".format(supply_name)
     mail_context = """
     Dear ALL,
-    系统发送供货单邮件，请勿回复。有任何问题请联系：？
+    
+        你好，附件为原料需求计划，请查收！
+        下方为送货交付时间要求（以收到邮件当天开始计算）：
+        订单号尾号为“1-4”：务必在3日内送达；
+        订单号尾号为“5-9”： 务必在5日内送达；
+        订单号尾号为“10-14”： 务必在10日内送达；
     """
     # 检查一下附件：
     check_attach(file_list)

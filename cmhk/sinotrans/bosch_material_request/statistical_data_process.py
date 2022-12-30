@@ -14,8 +14,11 @@ from datetime import datetime
 import win32com.client as win32
 from barcode.writer import ImageWriter
 from openpyxl.drawing.image import Image
+from openpyxl.utils.units import pixels_to_EMU
+# from openpyxl.worksheet.pagebreak import Break
+from openpyxl.drawing.xdr import XDRPositiveSize2D
 from openpyxl.styles import Font, Border, Alignment, Side
-
+from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, OneCellAnchor
 
 # 入参
 dirs = {
@@ -293,6 +296,17 @@ def get_barcode(code, img_path):
     return "{}.png".format(file_path)
 
 
+def offset_img(img):
+    """精确设置图片位置，偏移量以万为单位进行微调吧，具体计算公式太麻烦了
+    row column 的索引都是从0开始的，我这里要把图片插入到单元格B10
+    """
+    p2e = pixels_to_EMU
+    h, w = img.height, img.width
+    size = XDRPositiveSize2D(p2e(w), p2e(h))
+    marker = AnchorMarker(col=3, colOff=850000, row=1, rowOff=40000)
+    img.anchor = OneCellAnchor(_from=marker, ext=size)
+
+
 def generate_order_by_supply(order, data, supply_file, to_dir):
     data_list = []
     # 获取需要的数据
@@ -303,15 +317,23 @@ def generate_order_by_supply(order, data, supply_file, to_dir):
             continue
         row_idx += 1
         entity = [row_idx]
+        # 物料代码
         code = row.get("货品代码")
         entity.append(code)
+        # 供应商
         supply = row.get("供应商名称")
         entity.append(supply)
+        # 数量 -> 计划数量
         amount = row.get("预期收货数量")
         entity.append(amount)
+        # 单位
         entity.append("PCS")
+        # 上架库位
         stock_local = row.get("库位")
         entity.append(stock_local)
+        # 实发数量
+        entity.append("")
+        # 备注
         entity.append("")
         data_list.append(entity)
 
@@ -331,13 +353,14 @@ def generate_order_by_supply(order, data, supply_file, to_dir):
     # img_width = sheet.column_dimensions["E"].width + sheet.column_dimensions["F"].width + \
     #             sheet.column_dimensions["G"].width
     # 508 img_height * 3.26
-    barcode_img.height = 60
+    # barcode_img.height = 90
+    barcode_img.width = 300
+    offset_img(barcode_img)
     # img_width * 3.11
-    barcode_img.width = 325
     # _from = AnchorMarker(7, 50000, 1, 50000)
     # to = AnchorMarker(7, -50000, 1, -50000)
     # barcode_img.anchor = TwoCellAnchor('twoCell', _from, to)
-    sheet.add_image(barcode_img, "E2")
+    sheet.add_image(barcode_img)
 
     idx = len(data_list)
     for i in range(0, idx):
@@ -350,11 +373,29 @@ def generate_order_by_supply(order, data, supply_file, to_dir):
     sheet.row_dimensions[3 + idx + 1].height = "25"
     sheet.cell(row=3 + idx + 1, column=1, value="送货人：")
     sheet.cell(row=3 + idx + 1, column=5, value="收货人：")
-    # 合并单元格
+
     # 保存
     wb.save(supply_file)
     wb.close()
     return supply_file
+
+
+def set_print_fmt(supply: str) -> None:
+    """
+    设置打印格式
+    :param supply: 打印文件路径
+    """
+    wb = openpyxl.load_workbook(supply)
+    sheet = wb.active
+
+    # 获取需要打印的范围
+    print_area = sheet.dimensions
+    # 设置打印范围
+    sheet.print_area = print_area
+
+    # 关闭
+    wb.save(supply)
+    wb.close()
 
 
 def generate_supply_order(supply_name, supply_data, supply_file, to_dir):
@@ -366,8 +407,10 @@ def generate_supply_order(supply_name, supply_data, supply_file, to_dir):
         out_file_name = "{}供货单{}.xlsx".format(supply_name, no)
         out_path = os.path.join(to_dir, out_file_name)
         shutil.copyfile(supply_file, out_path)
+        # 生成供应单并把文件地址加入供应单列表
         supply_list.append(generate_order_by_supply(no, supply_data, out_path, to_dir))
-
+    # NEW~ 设置打印区间？
+    [set_print_fmt(supply) for supply in supply_list]
     return supply_list
 
 
@@ -407,6 +450,7 @@ def make_storage_template(tool, template, supply_file, to_dir):
             supplier_type = "王子"
         group_data = df_pivot.query("供应商 == ['{}']".format(supplier_type))
         tmp = subtotal_data(k, v, group_data)
+        # 生成供应单
         file_list = generate_supply_order(k, tmp, supply_file, to_dir)
         # NEW~ 将单一供货商的供货单据打包发送 PS: foxmail罪大恶极！！！
         to_zip = os.path.join(to_dir, "zip")
@@ -490,6 +534,16 @@ def compare_data_process(to_file, from_file):
     from_wb.close()
 
 
+def data_close_by_sheet(target_file: str, sheet_name: str) -> None:
+    # 获取表
+    wb = openpyxl.load_workbook(target_file)
+    sheet = wb[sheet_name]
+    # 删除数据
+    sheet.delete_cols(1, 2)
+    wb.save(target_file)
+    wb.close()
+
+
 def statistical_data(files, in_dirs):
     """
     $统计中心：主方法
@@ -511,6 +565,8 @@ def statistical_data(files, in_dirs):
         copy_excel_data(attach_excel, material_tool, "需求", copy_area="B,D:Q")
         # 3、获取系统库存导出数据进行处理
         export_excel = files.get("export")
+        # 进行库存数据清空
+        data_close_by_sheet(material_tool, "系统库存导出数据")
         # 同样也是拷贝表格的数据
         copy_excel_data(export_excel, material_tool, "系统库存导出数据", copy_area="B,T")
         # 获取已叫料但未收货数据
@@ -534,7 +590,7 @@ def statistical_data(files, in_dirs):
 print(statistical_data(file_dict, dirs))
 
 # ===============需求数据写入=============== #
-# pf = pd.read_excel(r"C:\Users\Administrator\Downloads\测试包\20221209_SAP_97506873.xlsx", usecols="B,D:Q")
+# pf = pd.read_excel(r"C:\Users\Administrator\Downloads\测试包\20221209_SAP_97506873.xlsx", sheet_name= usecols="B,D:Q")
 # book = load_workbook(r"C:\Users\Administrator\Downloads\原材料需求叫料11.30.xlsx")
 # sheet = book["需求"]
 # # 处理一下数据将列数据和body数据进行整合
