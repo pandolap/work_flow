@@ -3,6 +3,10 @@
 
 # 入参
 import re
+import os
+import json
+from datetime import datetime
+
 
 contract_data_list = [{'合同单号': '220082QMJK87ZS0449TTLC', '签订日期': '2022-03-24', '总金额': '1370500.00', '规格型号': [[' Audi TT Coupe 40 TFSI（Lbis white/Cloth black）', 1, 38800, 38800], [' Audi TT Coupe 40 TFSI（Navarra Blue/Cloth black）', 3, 39300, 117900], [' Audi TT Coupe 40 TFSI（Floretttsilber/Cloth black）', 1, 39300, 39300], [' Audi TT Coupe 40 TFSI（Red/Cloth black）', 5, 39300, 196500], [' Audi TT Coupe 40 TFSI（Lbis white/Cloth black）', 2, 40200, 80400], [' Audi TT Coupe 40 TFSI（Black/Cloth black）', 4, 40800, 163200], [' Audi TT Coupe 40 TFSI（Navarra Blue/Cloth black）', 6, 40800, 244800], [' Audi TT Coupe 40 TFSI（Floretttsilber/Cloth black）', 2, 40800, 81600], [' Audi TT Coupe 40 TFSI（Red/Cloth black）', 10, 40800, 408000]]}, {'合同单号': '220250QMJK87ZS0487TT', '签订日期': '2022-11-04', '总金额': '111525.00', '规格型号': [['2022 MERCEDES BENZ S500\n', 'W1K6G6DB9NA152788', 'Germany', 1, 'USD 111,525.00', 'USD 111,525.00']]}, {'合同单号': '220264QMJK87ZS0464TT', '签订日期': '2022-11-28', '总金额': '159400.00', '规格型号': [['TOYOTA GRANVIA 3.5L PETROL A/T', 'JTNYM8AP0P8002453 ', 'JAPAN', 1, 'USD 51,700.00', 'USD 51,700.00'], ['TOYOTA GRANVIA 3.5L PETROL A/T', 'JTNYM8APXP8002413', 'JAPAN ', 1, 'UAD 51,700.00', 'USD 51,700.00'], ['TOYOTA GRANVIA 3.5L PETROL A/T', 'JTNYM3AP0P8002469', 'JAPAN', 1, ' USD 56,000.00', ' USD 56,000.00']]}, {'合同单号': '220252QMJK87ZS0466TT', '签订日期': '2022-11-08', '总金额': '268208.78', '规格型号': [['2023 CHEVROLET CHEYENNE ZR2', '3GCUD9EL0PG102904', 'THE UNITED STATES', 1, 66955.9, 66955.9], ['2023 CHEVROLET CHEYENNE ZR2', '3GCUD9EL9PG103453', 'THE UNITED STATES', 1, 67433.5, 67433.5], ['2023 CHEVROLET CHEYENNE ZR2', '3GCUD9EL9PG104182', 'THE UNITED STATES', 1, 66842.73, 66842.73], ['2023 CHEVROLET CHEYENNE ZR2', '3GCUD9EL1PG102295', 'THE UNITED STATES', 1, 66976.65, 66976.65]]}, {'合同单号': '220254QMJK87ZS0466TT', '签订日期': '2022-11-16', '总金额': '135066.96', '规格型号': [['2023 CHEVROLET CHEYENNE ZR2', '3GCUD9EL2PG104511', 'MEXICO', 1, 66616.39, 66616.39], ['2023 CHEVROLET CHEYENNE ZR2', '3GCUD9EL6PG104365', 'MEXICO', 1, 68450.57, 68450.57]]}, {'合同单号': '220271QMJK87ZS0464TT', '签订日期': '2023-12-14', '总金额': '159400.00', '规格型号': [['TOYOTA GRANVIA 3.5L PETROL A/T', 'JTNYM8AP4P8002522', 'JAPAN', 1, 51700, 51700], ['TOYOTA GRANVIA 3.5L PETROL A/T', 'JTNYM3AP4P8002488', 'JAPAN', 1, 51700, 51700], ['TOYOTA GRANVIA 3.5L PETROL A/T', 'JTNYM8APXP8002492', 'JAPAN', 1, 56000, 56000]]}]
 
@@ -184,6 +188,21 @@ for list_ in list_data:
         licence_list.append(tmp)
     else:
         missing.append(temp_list.get('外贸合同号'))
+
+# 在这里增加一个日志的记录点
+config_dict = {
+    "base_path": r"D:\RPA\许可证"
+}
+# 首先获取工作目录
+work_dir = config_dict.get("base_path")
+target_dir = os.path.join(work_dir, "日志", datetime.now().strftime("%Y%m%d"))
+if not os.path.exists(target_dir):
+    os.makedirs(target_dir)
+
+with open(os.path.join(target_dir, "许可证导入数据-{}.json".format(datetime.now().strftime("%Y%m%d.%H%M%S"))), 'w',
+          encoding="utf-8") as f:
+    f.write(json.dumps(licence_list, ensure_ascii=False, indent=4))
+
 
 missing = list(set(missing))
 
