@@ -106,7 +106,12 @@ def parse_word(file_path):
     # 获取日期
     date_process = process_set[-2:]
     # 获取月份
-    _month = month_dict.get(date_process[0].upper(), '')
+    f = date_process[0].split(',')
+    if len(f) == 2:
+        f = f[1]
+    else:
+        f = f[0]
+    _month = month_dict.get(f.upper(), '')
     # 获取绝体天数
     _year = date_process[-1][-4:]
     day_str = date_process[-1][:-4]
@@ -185,12 +190,14 @@ def read_file_data(file_path):
         if not pd.isna(signing_date_str):
             break
 
-    temp_list = signing_date_str.replace(',', '').split(' ')[1:]
-    if len(temp_list) != 2:
-        raise Exception('程序异常-提取合同信息：获取合同的签订日期解析异常“%s”' % signing_date_str)
+    temp_list = signing_date_str.replace(',', ' ').split(" ")[-3:]
+    # temp_list = signing_date_str.replace(',', '').split(' ')[1:]
+    # if len(temp_list) != 2:
+    #     raise Exception('程序异常-提取合同信息：获取合同的签订日期解析异常“%s”' % signing_date_str)
     year_str = temp_list[-1][-4:]
-    month_str = month_dict.get(temp_list[0])
-    day_str_ = temp_list[-1][:-4]
+    month_str = month_dict.get(temp_list[0].upper())
+    # day_str_ = temp_list[-1][:-4]
+    day_str_ = temp_list[-2]
     day_str = re.findall(r"\d+", day_str_)[-1]
     try:
         sheet_data_fmt = datetime.date(int(year_str), int(month_str), int(day_str)).strftime('%Y-%m-%d')

@@ -175,9 +175,19 @@ def parse_data(path):
             trader_context = check_nan(row[16], col)
             (trader_zh, trader_en) = parse_zh_and_en(trader_context)
 
+            # 对暂无进行处理
+            if '暂无' in [trader_zh, trader_en]:
+                trader_zh = '暂无'
+                trader_en = '暂无'
+
             # 分割国外生产商中英文名称
             manufacture_context = check_nan(row[17], col)
             (manufacture_zh, manufacture_en) = parse_zh_and_en(manufacture_context)
+
+            # 对暂无进行处理
+            if '暂无' in [manufacture_en, manufacture_zh]:
+                manufacture_en = '暂无'
+                manufacture_zh = '暂无'
 
             # 将暂无替换成当前时间
             tmp_date = check_nan(row[15], col)
