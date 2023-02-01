@@ -24,13 +24,13 @@ from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, OneCellAnchor
 dirs = {
     'input': r'C:\\RPA\\中外运_博世叫料\\input',
     'output': r'C:\\RPA\\中外运_博世叫料\\output',
-    'runtime': r'C:\\RPA\\中外运_博世叫料\\output\\20221229',
+    'runtime': r'C:\\RPA\\中外运_博世叫料\\output\\20230201',
     'output_back': r'C:\\RPA\\中外运_博世叫料\\output_back',
-    'runtime_back': r'C:\\RPA\\中外运_博世叫料\\output_back\\20221229',
-    'log': r'C:\\RPA\\中外运_博世叫料\\output\\20221229\\log',
-    'screenshot': r'C:\\RPA\\中外运_博世叫料\\output\\20221229\\err_img',
-    'download': r'C:\\RPA\\中外运_博世叫料\\output\\20221229\\download',
-    'supply_order': r'C:\\RPA\\中外运_博世叫料\\output\\20221229\\order'
+    'runtime_back': r'C:\\RPA\\中外运_博世叫料\\output_back\\20230201',
+    'log': r'C:\\RPA\\中外运_博世叫料\\output\\20230201\\log',
+    'screenshot': r'C:\\RPA\\中外运_博世叫料\\output\\20230201\\err_img',
+    'download': r'C:\\RPA\\中外运_博世叫料\\output\\20230201\\download',
+    'supply_order': r'C:\\RPA\\中外运_博世叫料\\output\\20230201\\order'
 }
 
 # 邮箱附件地址
@@ -44,12 +44,12 @@ supplier_email = {
 }
 # 文件映射
 file_dict = {
-    "attach": r"C:\RPA\中外运_博世叫料\output\20221229\download\20221228_SAP_97506873.xlsx",
-    "export": r"C:\\RPA\\中外运_博世叫料\\output\\20221229\\download\\111平台-BSZZ01-库存即时报表（自用）.xlsx",
-    "template": r"C:\\RPA\\中外运_博世叫料\\output\\20221229\\原材料入库模板.xlsx",
-    "supply": r"C:\\RPA\\中外运_博世叫料\\output\\20221229\\供应商送货单.xlsx",
-    "material": r"C:\\RPA\\中外运_博世叫料\\output\\20221229\\原材料需求叫料.xlsx",
-    "not_receipt": r"C:\\RPA\\中外运_博世叫料\\output\\20221229\\download\\已叫料但未收货.xlsx"
+    "attach": r"C:\RPA\中外运_博世叫料\output\20230201\download\20230131_SAP_97506873.xlsx",
+    "export": r"C:\\RPA\\中外运_博世叫料\\output\\20230201\\download\\111平台-BSZZ01-库存即时报表（自用）.xlsx",
+    "template": r"C:\\RPA\\中外运_博世叫料\\output\\20230201\\原材料入库模板.xlsx",
+    "supply": r"C:\\RPA\\中外运_博世叫料\\output\\20230201\\供应商送货单.xlsx",
+    "material": r"C:\\RPA\\中外运_博世叫料\\output\\20230201\\原材料需求叫料.xlsx",
+    "not_receipt": r"C:\\RPA\\中外运_博世叫料\\output\\20230201\\download\\已叫料但未收货.xlsx"
 }
 # 缩写映射
 abbr_dict = {
@@ -174,6 +174,9 @@ def copy_excel_data(from_file, to_file, to_sheet=None, from_row=0, is_cover=True
     if is_exist:
         # 读取导出数据【物料代码】和【未分配】
         df = pd.read_excel(from_file, header=from_row, usecols=copy_area)
+        # 首先判断是否为空
+        if not len(df):
+            return
         # 处理拷贝数据
         copy_data = copy_process(df)
         # 将数据写入目标文件
@@ -208,11 +211,11 @@ def create_export_data(order_no, supplier_type, goods_code, receipt, stock_local
     return template_entity
 
 
-def subtotal_data(supplier_name, supplier_abbr, group_data):
+def subtotal_data(supplier_name, supplier_abbr, group_data, refer):
     # 4、获取需求订单数据（订单数量 - 半成品库存）
     # 获取当前日期字符串
     current_time = datetime.now().strftime("%Y%m%d")
-    # 3批次列表
+    # 3、批次列表
     export_data = []
     for row in group_data.itertuples():
         # 货品代码
@@ -221,31 +224,32 @@ def subtotal_data(supplier_name, supplier_abbr, group_data):
         stock_local = row[0][3]
         if stock_local == 0:
             stock_local = "L01"
-        # 预期收货数量
+
+        # 半成品库存
         stock = int(row[0][1])
-        # 批次1-4
-        batch_1_4 = int(getattr(row, "_1")) - stock
-        if batch_1_4 > 0:
-            no = "{}{}{}".format(current_time, supplier_abbr, "1-4")
-            export_data.append(create_export_data(no, supplier_name, goods_code, batch_1_4, stock_local))
-        # 批次5-9
-        if batch_1_4 < 0:
-            batch_1_4 = abs(batch_1_4)
+
+        # 获取分料数量
+        sort_num = int(row[1])
+
+        # 获取共用料号数量
+        query_condition = "共用二级料号=='{}'".format(goods_code)
+        share_num = refer.query(query_condition).get("需求数量")
+        # 判断共用料号是否存在
+        if len(share_num) == 1:
+            share_num = int(share_num)
         else:
-            batch_1_4 = 0
-        batch_5_9 = int(getattr(row, "_3")) - batch_1_4
-        if batch_5_9 > 0:
-            no = "{}{}{}".format(current_time, supplier_abbr, "5-9")
-            export_data.append(create_export_data(no, supplier_name, goods_code, batch_5_9, stock_local))
-        # 批次10-14
-        if batch_5_9 < 0:
-            batch_5_9 = abs(batch_5_9)
-        else:
-            batch_5_9 = 0
-        batch_10_14 = int(getattr(row, "_2")) - batch_5_9
-        if batch_10_14 > 0:
-            no = "{}{}{}".format(current_time, supplier_abbr, "10-14")
-            export_data.append(create_export_data(no, supplier_name, goods_code, batch_10_14, stock_local))
+            share_num = 0
+
+        # 获取原材料需求数量
+        need_amount = share_num
+        if share_num == 0:
+            need_amount = sort_num - stock
+
+        # 判断需求数量是否大于0
+        if need_amount > 0:
+            order_no = "{}{}".format(current_time, supplier_abbr)
+            export_data.append(create_export_data(order_no, supplier_name, goods_code, need_amount, stock_local))
+
     return export_data
 
 
@@ -434,8 +438,8 @@ def make_storage_template(tool, template, supply_file, to_dir):
     df = pd.read_excel(tool, sheet_name="BOM")
     # 2、制作数据透视表
     df_pivot = pd.pivot_table(df, index=["子件料号二级", "半成品库存", "供应商", "库位"],
-                              values=["1-4日分料数量", "5-9日分料数量", "10-14日分料数量"],
-                              aggfunc={"1-4日分料数量": np.sum, "5-9日分料数量": np.sum, "10-14日分料数量": np.sum},
+                              values=["分料数量"],
+                              aggfunc={"分料数量": np.sum},
                               margins=False)
     # 3、按供应商分类数据
     export_data = []
@@ -449,7 +453,9 @@ def make_storage_template(tool, template, supply_file, to_dir):
         if k == "王子新材":
             supplier_type = "王子"
         group_data = df_pivot.query("供应商 == ['{}']".format(supplier_type))
-        tmp = subtotal_data(k, v, group_data)
+        # 增加一个参照数据
+        refer_data = pd.read_excel(tool, sheet_name="共用料号", usecols="A,E")
+        tmp = subtotal_data(k, v, group_data, refer_data)
         # 生成供应单
         file_list = generate_supply_order(k, tmp, supply_file, to_dir)
         # NEW~ 将单一供货商的供货单据打包发送 PS: foxmail罪大恶极！！！
@@ -474,24 +480,10 @@ def get_formula_list(row):
     # 成品库存
     finish_inventory = "=IFERROR(VLOOKUP(A{num},原材料、成品库存透视表!$A$1:$C$1000,2,0),0)".format(num=row)
     formulas.append(finish_inventory)
-    # 1-4订单
-    order_1_4 = "=MAX(IF(ISERROR(VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*4),(B{num}+C{num}+D{num}+E{num})," \
-                "VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*4),(B{num}+C{num}+D{num}+E{num})," \
-                "IF(ISERROR(VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*4),(B{num}+C{num}+D{num}+E{num})," \
-                "VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*4))-Q{num}".format(num=row)
-    formulas.append(order_1_4)
-    # 5-9订单
-    order_5_9 = "=MAX(IF(ISERROR(VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*5),(F{num}+G{num}+H{num}+I{num}+J{num})," \
-                "VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*5),(F{num}+G{num}+H{num}+I{num}+J{num})," \
-                "IF(ISERROR(VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*5),(F{num}+G{num}+H{num}+I{num}+J{num})," \
-                "VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*5))-IF(R{num}<0,-R{num},0)".format(num=row)
-    formulas.append(order_5_9)
-    # 10-14订单
-    order_10_14 = "=MAX(IF(ISERROR(VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*5),(K{num}+L{num}+M{num}+N{num}+O{num})," \
-                  "VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*5),(K{num}+L{num}+M{num}+N{num}+O{num})," \
-                  "IF(ISERROR(VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*5),(K{num}+L{num}+M{num}+N{num}+O{num})," \
-                  "VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*5))-IF(S{num}<0,-S{num},0)".format(num=row)
-    formulas.append(order_10_14)
+    # 1-4订单 -修正为-> 分料数量，不再分开发送
+    order_formula = "=MAX(IF(ISERROR(VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*14),(P{num})," \
+                    "VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*14)-Q{num})".format(num=row)
+    formulas.append(order_formula)
     return formulas
 
 
