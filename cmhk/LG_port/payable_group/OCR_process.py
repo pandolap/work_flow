@@ -5,12 +5,16 @@ import json
 import os
 import re
 import traceback
+import hmac
+import time
+import base64
+import hashlib
 
 DEBUG = __name__ == '__main__'
 ocr_list = []
 
 if DEBUG:
-    dir_name = r'E:\work\RPA\中间文件\flow\辽港\4'
+    dir_name = r'C:\Users\Administrator\Downloads\今日测试\48500010-GXAP-20230113-0008'
     flow_json = os.path.join(dir_name, '审批流.json')
     ocr_json = os.path.join(dir_name, 'ocr.json')
     with open(flow_json, 'r', encoding='utf-8') as f:
@@ -32,6 +36,8 @@ if DEBUG:
             }
             ocr_list.append(d)
 else:
+    with open(r"3563-GXAP-20221215-0026_pre.json") as f:
+        flow = f.read()
     data = json.loads(flow)
 
 log_dir = data['config'].get('log_dir')
@@ -177,6 +183,197 @@ pay_sum = 0
 tax_sum = 0
 # 是否有发票
 invoice_exists = False
+
+# [暂缓]新增是否有中选或是备案
+# selected_filed = False
+# ====对法务信息进行处理====
+
+SIGN_SK = '5e278fb467e94d2e9c9241183c6ac0c5'
+SIGN_AK = '27e28e8ea93b44d69c21d39189a7e775'
+# SIGN_AK = 'ddec77bb168e465c96a970227889e243'
+# SIGN_SK = '37ff70b260764c56ad489e847387b262'
+
+DEBUG = __name__ == "__main__"
+
+
+def get_header() -> dict:
+    timestamp = int(time.time() * 1000)
+    data = '\ntimestamp:' + str(timestamp)
+    hashing = hmac.new(bytes(SIGN_SK, encoding='utf-8'), bytes(data.strip('&'), encoding='utf-8'),
+                       hashlib.sha1).digest()
+    sign = base64.b64encode(hashing)
+    headers = {'timestamp': str(timestamp), 'Authorization': SIGN_AK + ':' + bytes.decode(sign)}
+    return headers
+
+
+def get_images_result(asset_code: str) -> dict:
+    """ 获取影像图片信息 """
+    url1 = f"https://gip.cmft.com/gip-api/v1/images/{asset_code}"
+    # url1 = f"https://gip-st1.uat.cmft.com:8085/gip-api/v1/images/{asset_code}"
+    headers = get_header()
+    res = requests.get(url1, headers=headers)
+    if res.status_code == 200:
+        return res.json()
+    return {"识别失败": res.text}
+
+
+def get_ocr_text(img_url: str) -> dict:
+    if DEBUG:
+        request_url = "https://openapi.cmft.com/gateway/general1/1.0.0/api/pdfrec"
+    else:
+        request_url = "http://openapi.cmft.com:8080/gateway/general1/1.0.0/api/pdfrec"
+
+    payload = MultipartEncoder(
+        fields={
+            "file": ("img.jpg", requests.get(img_url).content),
+            "content": "multipart/form-data"
+        }
+    )
+
+    print(payload.content_type)
+    header = {
+        "Authorization": "ACCESSCODE 142717D9360287ED5BD1D03E1B6805D2",
+        "x-Gateway-APIKey": "b9180959-bb39-4f58-935a-bacc6a80d16c",
+        "Content-Type": payload.content_type,
+    }
+
+    response = requests.post(request_url, data=payload, headers=header)
+    return response.json()
+
+
+def get_original_num(title_text: str) -> str:
+    """
+    获取原单编号
+    :param title_text: 当前单据标题
+    :return: 原单编号
+    """
+    begin_idx = title_text.find("原单编号")
+    before_idx = title_text.rfind(")")
+    if begin_idx != -1 and before_idx != -1:
+        _num = title_text[begin_idx:before_idx]
+        res_ = re.findall(r"\d+-\w+-\d+-\d+", _num)
+        if len(res_) > 0:
+            original_num = res_[0]
+            return original_num
+        else:
+            return ""
+    else:
+        return ""
+
+
+def get_record_info(rx_no):
+    if rx_no:
+        res_out = get_images_result('E{}'.format(rx_no))
+        url_list = []
+        if res_out.get("code") == "Y":
+            url = None
+            res_body = res_out.get("body")
+            images_data = res_body.get("images")[0]
+            for img in images_data.get("sameTypeList"):
+                if img.get("treeId", "A004") == "A006":
+                    url = img.get("url")
+                    url_list.append(url)
+            if len(url_list) > 0:
+                return True, url_list
+            else:
+                return False, None
+        else:
+            return False, None
+    else:
+        return False, None
+
+
+def get_image_amount(url):
+    res = get_ocr_text(url)
+    if res.get('code', 'N') == 'Y':
+        is_selected = None
+        ocr_detail = res.get("details", "")[0]
+        lines = ocr_detail.get("context").get("lines")
+        for line in lines:
+            if "中选" in line:
+                is_selected = True
+                break
+            if "备案" in line:
+                is_selected = False
+                break
+        # 成交金额
+        deal_amount = 0
+        # 预算金额
+        budget_amount = 0
+        if is_selected:
+            # 中选
+            for line in lines:
+                if "成交金额" in line:
+                    deal_amount = re.findall(r"\d+", line)[0]
+                if "预算价" in line:
+                    budget_amount = re.findall(r"\d+", line)[0]
+        else:
+            # 备案
+            is_budget = False
+            is_deal = False
+            for line in lines:
+                if is_deal:
+                    deal_amount = re.findall(r"\d+", line)[0]
+                    is_deal = False
+                if is_budget:
+                    budget_amount = re.findall(r"\d+", line)[0]
+                    is_budget = False
+                if '预算价' in line:
+                    is_budget = True
+                if "合同金额" in line:
+                    is_deal = True
+        return is_selected, deal_amount, budget_amount
+    else:
+        return None, None, None
+
+
+# 获取单据原单号
+title_text = data['data']['current_title']
+# 区分单据获得：
+if '自动扣款' in title_text:
+    original = No
+else:
+    original = get_original_num(title_text)
+(selected_filed, ocr_list_1) = get_record_info(original)
+deal = None
+if selected_filed:
+    (is_select, deal, budget) = get_image_amount(ocr_list_1[0])
+    # 比较
+    if is_select == True:
+        # 中选
+        pass
+    elif is_select == False:
+        # 备案
+        if int(budget) == 0:
+            advice += '【未提取到预算金额，请人工校验】；'
+        else:
+            if float(budget) >= float(deal):
+                advice += '不超出预算；'
+            else:
+                advice += '【超出预算】；'
+    else:
+        # 山野没有
+        selected_filed = False
+else:
+    advice += '【未找到中选或备案】；'
+    # No
+this_pay = baseInfo.get("本次支付金额", "")
+total_pay = baseInfo.get("累计支付金额", "")
+if this_pay == "" or total_pay == "":
+    advice += '【未查到法务信息】；'
+else:
+    legal = float(this_pay) + float(total_pay)
+    advice += '含本单合计：{}元；'.format(str(legal))
+    if selected_filed:
+        if float(deal) < legal:
+            advice += '【超额支付】；'
+        else:
+            advice += '未超额支付；'
+    else:
+        pass
+        # advice += ''
+
+
 
 # try:
 # for i in url_dict['images']['N']:
@@ -367,13 +564,16 @@ for url_index, url in enumerate(url_dict_new):
 
                     payee = payee.replace('（', '').replace('）', '').replace('(', '').replace(')', '')
                     seller = seller.replace('（', '').replace('）', '').replace('(', '').replace(')', '')
-                    if payee == seller:
-                        seller_flag = 0
-                        print("第{}张影像中收款人与发票中的销售方名称一致".format(url_index))
-                    else:
-                        # advice = advice + "第{}张影像中收款人与发票中的销售方名称不一致；".format(url_index)
-                        seller_flag = 1
-                        question_list.append(url_index)
+
+                    if '月度预提单' not in data['data']['current_title']:
+                        # 去掉当前的收款人和销售方名称校验
+                        if payee == seller:
+                            seller_flag = 0
+                            print("第{}张影像中收款人与发票中的销售方名称一致".format(url_index))
+                        else:
+                            # advice = advice + "第{}张影像中收款人与发票中的销售方名称不一致；".format(url_index)
+                            seller_flag = 1
+                            question_list.append(url_index)
 
                     # if receivingBank == seller_bank:
                     #     print("收款银行与发票影像中的销售方开户行一致")
@@ -502,15 +702,29 @@ moneyFee = moneyFee.replace(',', '')
 finalPayTax = moneyFee
 final_pay_tax = round(float(finalPayTax), 2)
 
+
+## 只影响对外
 if invoice_exists:
+    if '对外付款单' in data['data'].get('current_title'):
+        # 增加 由预付款单推出对外付款单审核要点
+        subsist_no = data['data']['baseInfo'].get('预付款单号')
+        pay_amount = data['data']['baseInfo'].get('付款金额')
+        if float(pay_amount) == 0.0:
+            if subsist_no not in ['', ' ', '...']:
+                amount = data['data']['baseInfo'].get('合计应付金额')
+                if amount:
+                    final_pay = float(amount.replace(',', ''))
+
     if round(pay_sum, 2) != round(final_pay, 2):
         delta = abs(round(final_pay - pay_sum, 2))
-        advice += '【总金额不一致, 差额%s】；' % str(delta)
+        advice += '【请核查总金额, 差额%s】；' % str(delta)
+    else:
+        if '对外付款单' in data['data'].get('current_title'):
+            advice += '总金额一致；'
     if round(taxSum, 2) != round(final_pay_tax, 2):
         delta = abs(round(final_pay_tax - taxSum, 2))
-        advice += '【税额不一致, 差额%s】；' % str(delta)
+        advice += '【请核查税额, 差额%s】；' % str(delta)
 # 2021/1/15 ------------------------------
-
 
 question_list = list(set(question_list))
 if "不一致" in advice or "没有" in advice or "超仓" in advice:
@@ -631,7 +845,7 @@ for item in L:
 approveopinions = approveopinions.replace('找不到封面页；请核实；', '【找不到封面页，请核实】；')
 
 pattern1 = re.compile(r'([^【】]*)(【[^【】]*?】)([^【】]*)')
-pattern2 = re.compile(r'(机器人试运行，审批意见：)(.*)')
+pattern2 = re.compile(r'(机器人审批意见：)(.*)')
 pattern3 = re.compile(r'；{2,}')
 
 L = []

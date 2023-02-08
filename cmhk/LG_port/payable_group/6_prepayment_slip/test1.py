@@ -4,13 +4,9 @@
 import json
 import re
 import time
-import pandas as pd
 import os
 import traceback
 import datetime
-
-with open(r"C:\Users\Administrator\Downloads\20230203_测试\测试数据\3790-JK-20230202-0001\3790-JK-20230202-0001_预付款单审批流.json", encoding='utf-8') as f:
-    flow = f.read()
 
 data = json.loads(flow)
 
@@ -38,16 +34,15 @@ def handle_data(flow):
             webapproal.append(i)
     flow["element"]["approval"] = webapproal
 
-
 def compareApproval(flow):
     if not flow["element"]["approval"]:
         flow["data"]["advice"].append("【流程异常，请检查单据】；")
         return
     if not flow["data"]["verifyflow"]:
         if data['data']['not_find_company']:
-            flow["data"]["advice"].append('机器人审批意见：【审批矩阵找不到该公司】；')
-        # else:
-        # flow["data"]["advice"].append('提示：机器人试运行，【流程异常，请检查单据】；')
+            flow["data"]["advice"].append('提示：机器人试运行，【审批矩阵找不到该公司】；')
+        #else:
+            #flow["data"]["advice"].append('提示：机器人试运行，【流程异常，请检查单据】；')
         return
     webdata = []
     exdata = []
@@ -99,14 +94,13 @@ def compareApproval(flow):
                         if handle_v not in webdata:
                             flow["data"]["advice"].append(v + "不在审批记录；")
     if not flow["data"]["advice"]:
-        flow["data"]["advice"].append("审批流程无误")
+        flow["data"]["advice"].append("审批流程无误；")
     else:
         for i in flow["data"]["advice"]:
             if "审批记录" in i:
                 continue
-            flow["data"]["advice"].append("审批流程无误")
+            flow["data"]["advice"].append("审批流程无误；")
             break
-
 
 # 对往来户、供货商/客户，对收款人字段名称的检查
 
@@ -134,72 +128,45 @@ def check_field(standard: str, tested: str) -> tuple:
     return is_flag, idx
 
 
-add_approval = []
-wrong_opinion = []
-
-# 校验客商名称集合
-merchant_name = {}
-exclude_name = ['集团公共客商', '', ' ', '\xa0']
 payee = baseInfo.get('收款人')
-supplier = list(filter(lambda supply: supply not in exclude_name, baseInfo.get('供货商', [])))
-if supplier:
-    merchant_name.setdefault('供货商', supplier)
-# customer = list(filter(lambda cust: cust not in exclude_name, baseInfo.get('客户', [])))
-# if customer:
-#     merchant_name.setdefault('客户', customer)
-# contacts = baseInfo.get('往来户')
-# if contacts and '集团公共客商' != contacts:
-#     merchant_name.setdefault('往来户', [contacts])
-is_name_correct = True
-if merchant_name:
-    for k, v in merchant_name.items():
-        for item in v:
-            (is_, diff_place) = check_field(payee, item)
-            if is_:
-                is_name_correct = False
-                wrong_opinion.append('【请核查{}中第{}字】'.format(k, diff_place))
-                break
+supplier = list(filter(lambda supply: supply not in ['', ' ', '\xa0'], baseInfo.get('供货商')))
+# customer = list(filter(lambda cust: cust not in ['', ' ', '\xa0'], baseInfo.get('客户')))
+# 检查供货商
+is_err = False
+if '招商局集团（默认供应商）' not in supplier:
+    for sup in supplier:
+        (is_, diff_place) = check_field(payee, sup)
+        if is_:
+            if not data['data']['advice']:
+                data['data']['advice'] = []
+            data['data']['advice'].append('【请核查客商名称中第{}字】'.format(diff_place))
+            is_err = True
+            break
+if not is_err:
+    if not data['data']['advice']:
+        data['data']['advice'] = []
+    data['data']['advice'].append('客商四项名称核对准确；')
+# # 检查客户
+# if '招商局集团（默认供应商）' not in customer:
+#     for cus in customer:
+#         (is_, diff_place) = check_field(payee, cus)
+#         if is_:
+#             result.append('【请核查客商名称中第{}字】'.format(diff_place))
 
-if is_name_correct:
-    add_approval.append('客商名称准确')
-
-payment_bank = baseInfo.get('付款银行', '')
-offline_payment_details = os.path.join(home_dir, '线下付款明细.xls')
-offline_details = pd.read_excel(offline_payment_details)
-query_result = offline_details.query('单据编号=="{}"'.format(No))
-is_china_bank = payment_bank.startswith('中国银行股份有限公司')
-is_cmhk = payment_bank.startswith('招商局集团财务有限公司')
-pay_comment = ""
-if len(query_result) > 0:
-    if is_china_bank or is_cmhk:
-        wrong_opinion.append('【线下付款银行未修改】')
-    else:
-        pay_comment = '线下付款准确；'
-else:
-    if is_china_bank or is_cmhk:
-        pay_comment = '线上付款；'
-    else:
-        wrong_opinion.append('【补充线下付款申请】')
-
-if pay_comment:
-    add_approval.append(pay_comment)
 
 try:
-    # data["data"]["advice"] = []
+    #data["data"]["advice"] = []
     number = re.findall("\d+", data["element"]["text"].split("-")[3])[0]
     if number != data["data"]["baseInfo"]["付款账号"].split("-")[1]:
         data["data"]["advice"].append("组织编号不一致；")
     handle_data(data)
     compareApproval(data)
     if '审批流程无误' in data["data"]["advice"]:
-        data['data']['verifyResult'] = '机器人审批意见：' + ''.join(data['data']['advice'])
+        data['data']['verifyResult'] =  '机器人试运行，审批意见：' + ''.join(data['data']['advice'])
     else:
-        data['data']['verifyResult'] = '机器人审批意见：' + '【' + ''.join(data['data']['advice']) + '】'
-    # 将新增审批意见添加
-    data['data']['verifyResult'] += '；' + '；'.join(wrong_opinion) + '；' + '；'.join(add_approval)
+        data['data']['verifyResult'] =  '机器人试运行，审批意见：' + '【' + ''.join(data['data']['advice']) + '】'
 
-except Exception as e:
-    print(e)
-    data['data']['verifyResult'] = '机器人审批意见：流程异常，请检查日志'
+except:
+    data['data']['verifyResult'] = '机器人试运行，审批意见：流程异常，请检查日志'
 
 flow = json.dumps(data)

@@ -4,9 +4,10 @@
 import json
 import os
 import re
+import pandas as pd
 
 # ARGS:
-with open(r"") as f:
+with open(r"C:\Users\Administrator\Downloads\今日测试\15080008-GXAP-20221118-0023\审批流.json", encoding='utf-8') as f:
     flow = f.read()
 
 data = json.loads(flow)
@@ -43,12 +44,119 @@ web_flow_data = list(map(lambda x: dict(zip(web_table_header, x)), web_table_dat
 
 result = []
 if len(web_flow_data) == 0:
-    result.append('提示：机器人试运行，审批意见：【网页取数异常，超时未取到网页审批流表格】；')
+    result.append('提示：机器人审批意见：【网页取数异常，超时未取到网页审批流表格】；')
 
 if data['data']['not_find_company']:
-    result.append('提示：机器人试运行，审批意见：【审批矩阵找不到该公司】；')
+    result.append('提示：机器人审批意见：【审批矩阵找不到该公司】；')
 verifyflows = data['data'].get('verifyflow', [])
+
+
+# 对往来户、供货商/客户，对收款人字段名称的检查
+
+def check_field(standard: str, tested: str) -> tuple:
+    if not (standard and tested):
+        raise Exception("比较字符串时，入参为空")
+    # 对两个字段进行去空格处理
+    standard = standard.strip()
+    tested = tested.strip()
+    # 将两个字段进行逐字比对
+    # 首先比较字段的长度
+    standard_len = len(standard)
+    tested_len = len(tested)
+    idx = 1
+    is_flag = False
+    if standard_len != tested_len:
+        is_flag = True
+    compare_len = min(standard_len, tested_len)
+    for i in range(0, compare_len):
+        if standard[i] != tested[i]:
+            is_flag = True
+            break
+        else:
+            idx += 1
+    return is_flag, idx
+
+
+# 校验客商名称集合
+merchant_name = {}
+exclude_name = ['集团公共客商', '', ' ', '\xa0']
+payee = itemDict.get('收款人')
+
+supplier = list(filter(lambda supply: supply not in exclude_name, itemDict.get('供货商', [])))
+if supplier:
+    merchant_name.setdefault('供货商', supplier)
+customer = list(filter(lambda cust: cust not in exclude_name, itemDict.get('客户', [])))
+if customer:
+    merchant_name.setdefault('客户', customer)
+contacts = itemDict.get('往来户')
+if contacts and '集团公共客商' != contacts:
+    merchant_name.setdefault('往来户', [contacts])
+
+if merchant_name:
+    for k, v in merchant_name.items():
+        for item in v:
+            (is_, diff_place) = check_field(payee, item)
+            if is_:
+                result.append('【请核查{}中第{}字】'.format(k, diff_place))
+                break
+
+
+# 增加 由预付款单推出对外付款单审核要点
+# subsist_no = itemDict.get('预付款单号')
+# pay_amount = itemDict.get('付款金额')
+# total_payable_amount = itemDict.get('合计应付金额')
+#
+# if float(pay_amount) == 0.0:
+#     if subsist_no not in ['', ' ', '...']:
+#         result.append('【请核查总金额, 差额{}】'.format(total_payable_amount))
+
+
+# 核对线下付款
+def get_original_num(title_text: str) -> str:
+    """
+    获取原单编号
+    :param title_text: 当前单据标题
+    :return: 原单编号
+    """
+    begin_idx = title_text.find("原单编号")
+    before_idx = title_text.rfind(")")
+    if begin_idx != -1 and before_idx != -1:
+        _num = title_text[begin_idx:before_idx]
+        res_ = re.findall(r"\d+-\w+-\d+-\d+", _num)
+        if len(res_) > 0:
+            original_num = res_[0]
+            return original_num
+        else:
+            return ""
+    else:
+        return ""
+
+
+payment_bank = itemDict.get("付款银行", "")
+offline_payment_details = os.path.join(home_dir, '线下付款明细.xls')
+offline_details = pd.read_excel(offline_payment_details)
+invoice_title = data['data']['current_title']
+original_no = get_original_num(invoice_title)
+query_result = offline_details.query('单据编号=="{}"'.format(original_no))
+is_china_bank = payment_bank.startswith('中国银行股份有限公司')
+is_cmhk = payment_bank.startswith('招商局集团财务有限公司')
+pay_comment = ""
+if len(query_result) > 0:
+    if is_china_bank or is_cmhk:
+        result.append('【线下付款银行未修改】')
+    else:
+        pay_comment = '线下付款准确；'
+else:
+    if is_china_bank or is_cmhk:
+        pay_comment = '线上付款；'
+    else:
+        result.append('【补充线下付款申请】')
+
 # 改动
+
+resultSet = {}
+approval_flow = []
+
 if len(verifyflows) > 0:
     verifyflow = verifyflows[0]
 
@@ -194,21 +302,61 @@ if len(verifyflows) > 0:
     if '不在审批流中；' in resultSet:
         resultSet.remove('不在审批流中；')
 
-    if len(result) > 0 and result[0].startswith('提示'):
-        data['data']['result'] = result
-    elif len(resultSet) > 0:
-        if approval_flow:
-            resultSet = ['【' + ','.join(list(resultSet)) + ' (' + '-'.join(approval_flow) + ')' + '】']
-        else:
-            resultSet = ['【' + ','.join(list(resultSet)) + '】']
-        resultSet.insert(0, '机器人试运行，审批意见：')
-        data['data']['result'] = resultSet
+else:
+    result.append(data['data']['advice'][0])
+
+if len(result) > 0 and result[0].startswith('提示'):
+    # 去掉提示
+    result[0] = result[0][3:]
+    data['data']['result'] = result
+elif len(resultSet) > 0:
+    if approval_flow:
+        resultSet = ['【' + ','.join(list(resultSet)) + ' (' + '-'.join(approval_flow) + ')' + '】']
     else:
-        data['data']['result'] = ['机器人试运行，审批意见：审批流程无误；']
+        resultSet = ['【' + ','.join(list(resultSet)) + '】']
+    resultSet.insert(0, '机器人审批意见：')
+
+    is_merchant = True
+    if len(result) > 0:
+        for res in result:
+            if '请核查' in res:
+                is_merchant = False
+            resultSet.append(res)
+
+    if is_merchant:
+        resultSet.append('客商名称准确；')
+
+    resultSet.append(pay_comment)
+
+    data['data']['result'] = resultSet
+
+else:
+    if len(result) > 0:
+        is_merchant_inspect_exist = False
+        is_approval_process = False
+        for res in result:
+            if '请核查' in res:
+                is_merchant_inspect_exist = True
+            if '未找到' in res:
+                is_approval_process = True
+        if is_approval_process:
+            if is_merchant_inspect_exist:
+                hint = ['机器人审批意见：{}；'.format('；'.join(result)) + pay_comment]
+            else:
+                hint = ['机器人审批意见：{}；客商名称准确；'.format('；'.join(result)) + pay_comment]
+        else:
+            if is_merchant_inspect_exist:
+                hint = ['机器人审批意见：{}；审批流程无误；'.format('；'.join(result)) + pay_comment]
+            else:
+                hint = ['机器人审批意见：{}；审批流程无误；客商名称准确；'.format('；'.join(result)) + pay_comment]
+        data['data']['result'] = hint
+    else:
+        data['data']['result'] = ['机器人审批意见：审批流程无误；客商名称准确；' + pay_comment]
+
     # for i in resultSet:
     #     i = i.strip()
     # print(data['data']['result'] )
-else:
-    if data['data']['not_find_company']:
-        data['data']['result'] = ['机器人试运行，审批意见：【审批矩阵找不到该公司】；']
+# else:
+#     if data['data']['not_find_company']:
+#         data['data']['result'] = ['机器人审批意见：【审批矩阵找不到该公司】；']
 flow = json.dumps(data)

@@ -6,10 +6,8 @@ import json
 import traceback
 import os
 
-# ARGS:
-with open(r"C:\Users\Administrator\Downloads\48500001-GXAP-20221220-0016\查找审批流前.json.json") as f:
+with open(r"C:\RPA\中外运_博世叫料\output\20230113\download\3829-GXAP-20230113-0016\查找审批流前.json.json") as f:
     flow = f.read()
-# ------------------
 
 inArg = json.loads(flow)
 data = inArg['data']
@@ -114,20 +112,20 @@ def getFlow(data, department, feeType, feeTypeName, manType=None):
         L = list(filter(lambda x: x[FTP].startswith('普通费用'), data))
         tips.append(feeTypeName)
     if len(L) == 0:
-        inArg['data']['advice'].append('【费用类型未找到（普通费用类型）】')
+        inArg['data']['advice'].append('费用类型未找到（普通费用类型）')
     else:
         # 2、匹配部门
         L = list(filter(lambda x: x[DPT].find(department) > -1, L))
         tips.append(department)
         if len(L) == 0:
-            inArg['data']['advice'].append('【部门未找到（%s）】' % '-'.join(tips))
+            inArg['data']['advice'].append('部门未找到（%s）' % '-'.join(tips))
         else:
             # 3、匹配人员类别
             if manType:
                 L = list(filter(lambda x: x[MTP] == manType, L))
                 tips.append(manType)
             if len(L) == 0:
-                inArg['data']['advice'].append('【人员类别未找到（%s）】' % '-'.join(tips))
+                inArg['data']['advice'].append('人员类别未找到（%s）' % '-'.join(tips))
     return L
 
 
@@ -152,7 +150,7 @@ runDict = {
 
 try:
     data['verifyflow'] = runDict.get(control['run'])(*control.get('arguments', []))
-except Exception as e:
+except:
     with open(r'C:\RPA\log', 'a') as f:
         f.write(traceback.format_exc())
     data['verifyflow'] = []

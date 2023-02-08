@@ -9,7 +9,7 @@ import os
 import traceback
 import datetime
 
-with open(r"E:\work\RPA\中间文件\flow\辽港\1\新建文件夹\40000001-FY-20220510-0001_自动扣款审批流.json", 'r', encoding='utf-8') as f:
+with open(r"C:\Users\Administrator\Downloads\40000001-FY-20230111-0004\40000001-FY-20230111-0004_自动扣款审批流.json", 'r', encoding='utf-8') as f:
     flow = f.read()
 data = json.loads(flow)
 
