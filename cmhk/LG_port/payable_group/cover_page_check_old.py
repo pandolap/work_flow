@@ -10,7 +10,7 @@ from datetime import datetime
 import openpyxl
 import requests
 
-with open(r"C:\Users\Administrator\Downloads\48500008-GXAP-20221208-0024\48500008-GXAP-20221208-0024_pre.json") as f:
+with open(r"C:\应付组日志\ocr与审批流运行数据\15080008-GXAP-20230214-0002\15080008-GXAP-20230214-0002_pre.json") as f:
     flow = f.read()
 
 data = json.loads(flow)
@@ -46,6 +46,15 @@ def get_ocr_text(file_path):
     return response
 
 
+def get_invoice_name(ocr_text):
+    # 首先以单字
+    end_idx = ocr_text.find('单')
+    tmp_area = ocr_text[:end_idx + 1]
+    start_idx = tmp_area.rfind(',')
+    invoice_name = tmp_area[start_idx + 1:]
+    return invoice_name
+
+
 # Todo url是影像系统里第一张图片的链接
 f = download_jpg(url)
 
@@ -71,8 +80,17 @@ while ocr_flag < 5:
 cover_ocr_file = os.path.join(invoice_dir, '封面页OCR识别数据.json')
 with open(cover_ocr_file, "w", encoding='utf-8') as f:
     json.dump(text, f)
-if text["response"] and isinstance(text["response"], list) and isinstance(text["response"][0], dict) and text["response"][0]:
+invoice_type_approval = ''
+if text["response"] and isinstance(text["response"], list) and isinstance(text["response"][0], dict) and \
+        text["response"][0]:
     words_list = text["response"][0]["text2"]
+    order_name = get_invoice_name(words_list)
+    invoice_title = data['data']['current_title']
+    # 新增需求单据类型对比
+    if order_name in invoice_title:
+        invoice_type_approval = '封面单据类型一致；'
+    else:
+        invoice_type_approval = '【请核查封面单据类型】；'
     for irow in range(max_rows):
         irow += 1
         company_list.append(ws.cell(irow, 2).value)
@@ -98,5 +116,5 @@ if text["response"] and isinstance(text["response"], list) and isinstance(text["
                 break
 if b == "":
     b = "【封面打印有误；请检查；】"
-data['data']['verifyResult'] = data['data']['verifyResult'] + a + b
+data['data']['verifyResult'] = data['data']['verifyResult'] + a + b + invoice_type_approval
 flow = json.dumps(data)

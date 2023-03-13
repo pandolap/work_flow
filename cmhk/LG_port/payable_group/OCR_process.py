@@ -14,7 +14,7 @@ DEBUG = __name__ == '__main__'
 ocr_list = []
 
 if DEBUG:
-    dir_name = r'C:\Users\Administrator\Downloads\今日测试\48500010-GXAP-20230113-0008'
+    dir_name = r'C:\Users\Administrator\Downloads\15080005-GXAP-20230213-0002'
     flow_json = os.path.join(dir_name, '审批流.json')
     ocr_json = os.path.join(dir_name, 'ocr.json')
     with open(flow_json, 'r', encoding='utf-8') as f:
@@ -36,7 +36,8 @@ if DEBUG:
             }
             ocr_list.append(d)
 else:
-    with open(r"3563-GXAP-20221215-0026_pre.json") as f:
+    with open(
+            r"C:\Users\Administrator\Downloads\4050-GXAP-20230210-0001\4050-GXAP-20230210-0001_pre.json") as f:
         flow = f.read()
     data = json.loads(flow)
 
@@ -101,6 +102,30 @@ import openpyxl
 import pandas as pd
 import numpy as np
 import uuid
+
+
+def check_field(standard: str, tested: str) -> tuple:
+    if not (standard and tested):
+        raise Exception("比较字符串时，入参为空")
+    # 对两个字段进行去空格处理
+    standard = standard.strip()
+    tested = tested.strip()
+    # 将两个字段进行逐字比对
+    # 首先比较字段的长度
+    standard_len = len(standard)
+    tested_len = len(tested)
+    idx = 1
+    is_flag = False
+    if standard_len != tested_len:
+        is_flag = True
+    compare_len = min(standard_len, tested_len)
+    for i in range(0, compare_len):
+        if standard[i] != tested[i]:
+            is_flag = True
+            break
+        else:
+            idx += 1
+    return is_flag, idx
 
 
 def imageJson(url, count=5, ocr_result=None, img_content=None):
@@ -196,6 +221,11 @@ SIGN_AK = '27e28e8ea93b44d69c21d39189a7e775'
 DEBUG = __name__ == "__main__"
 
 
+def record_runtime_data(runtime_data, name):
+    with open(os.path.join(invoice_dir, name) + '.json', 'w', encoding='utf-8') as f:
+        json.dump(runtime_data, f)
+
+
 def get_header() -> dict:
     timestamp = int(time.time() * 1000)
     data = '\ntimestamp:' + str(timestamp)
@@ -268,11 +298,12 @@ def get_record_info(rx_no):
         if res_out.get("code") == "Y":
             url = None
             res_body = res_out.get("body")
-            images_data = res_body.get("images")[0]
-            for img in images_data.get("sameTypeList"):
-                if img.get("treeId", "A004") == "A006":
-                    url = img.get("url")
-                    url_list.append(url)
+            images_data = res_body.get("images")
+            for image in images_data:
+                for img in image.get("sameTypeList"):
+                    if img.get("treeId", "A004") == "A006":
+                        url = img.get("url")
+                        url_list.append(url)
             if len(url_list) > 0:
                 return True, url_list
             else:
@@ -281,6 +312,23 @@ def get_record_info(rx_no):
             return False, None
     else:
         return False, None
+
+
+def forecast_match_amount(arg):
+    res_amount = 0.0
+    if arg:
+        args = re.findall(r'\d+', arg)
+        if len(args) == 1:
+            res_amount = float(args[0])
+        else:
+            mantissa = len(args[-1])
+            if mantissa == 2:
+                # 正常小数位
+                res_amount = float('{}.{}'.format(''.join(args[:-1]), args[-1]))
+            else:
+                # 拼接整数
+                res_amount = float(''.join(args))
+    return res_amount
 
 
 def get_image_amount(url):
@@ -301,30 +349,69 @@ def get_image_amount(url):
         # 预算金额
         budget_amount = 0
         if is_selected:
+            record_runtime_data(res, '中选通知书OCR识别记录')
             # 中选
+            is_budget = False
+            is_deal = False
             for line in lines:
                 if "成交金额" in line:
-                    deal_amount = re.findall(r"\d+", line)[0]
+                    is_deal = True
                 if "预算价" in line:
-                    budget_amount = re.findall(r"\d+", line)[0]
+                    is_budget = True
+                if is_deal:
+                    if re.findall(r"\d+", line):
+                        deal_amount = forecast_match_amount(line)
+                        is_deal = False
+                if is_budget:
+                    if re.findall(r"\d+", line):
+                        budget_amount = forecast_match_amount(line)
+                        is_budget = False
+
         else:
+            record_runtime_data(res, '备案通知书OCR识别记录')
             # 备案
             is_budget = False
             is_deal = False
             for line in lines:
-                if is_deal:
-                    deal_amount = re.findall(r"\d+", line)[0]
-                    is_deal = False
-                if is_budget:
-                    budget_amount = re.findall(r"\d+", line)[0]
-                    is_budget = False
                 if '预算价' in line:
                     is_budget = True
                 if "合同金额" in line:
                     is_deal = True
+                if is_deal:
+                    if re.findall(r"\d+", line):
+                        deal_amount = forecast_match_amount(line)
+                        is_deal = False
+                if is_budget:
+                    if re.findall(r"\d+", line):
+                        budget_amount = forecast_match_amount(line)
+                        is_budget = False
+
         return is_selected, deal_amount, budget_amount
     else:
         return None, None, None
+
+
+def amount_update(amount):
+    try:
+        res = float(amount)
+    except Exception:
+        # 寻找金额
+        is_decimal_point = False
+        if ',' in amount:
+            amount = amount.replace(',', '')
+        if '，' in amount:
+            amount = amount.replace('，', '')
+        if '.' in amount:
+            is_decimal_point = True
+            amount = amount.replace('.', '')
+        if is_decimal_point:
+            amount = "{}.{}".format(amount[:-2], amount[-2:])
+        res = float(amount)
+    return res
+
+
+def get_amount(org_str):
+    return org_str.replace(',', '')
 
 
 # 获取单据原单号
@@ -338,13 +425,15 @@ else:
 deal = None
 if selected_filed:
     (is_select, deal, budget) = get_image_amount(ocr_list_1[0])
+    deal = deal
+    budget = budget
     # 比较
     if is_select == True:
         # 中选
         pass
     elif is_select == False:
         # 备案
-        if int(budget) == 0:
+        if float(budget) == 0.0:
             advice += '【未提取到预算金额，请人工校验】；'
         else:
             if float(budget) >= float(deal):
@@ -359,11 +448,16 @@ else:
     # No
 this_pay = baseInfo.get("本次支付金额", "")
 total_pay = baseInfo.get("累计支付金额", "")
-if this_pay == "" or total_pay == "":
+
+if this_pay == "" and total_pay == "":
     advice += '【未查到法务信息】；'
 else:
-    legal = float(this_pay) + float(total_pay)
-    advice += '含本单合计：{}元；'.format(str(legal))
+    if this_pay == '':
+        this_pay = '0'
+    if total_pay == '':
+        total_pay = '0'
+    legal = float(get_amount(this_pay)) + float(get_amount(total_pay))
+    advice += '含本单合计：{}元；'.format(str(round(legal, 2)))
     if selected_filed:
         if float(deal) < legal:
             advice += '【超额支付】；'
@@ -373,7 +467,31 @@ else:
         pass
         # advice += ''
 
+# 2.13 物资采购付款申请单
+annex_num = baseInfo.get('附件数')
+if not annex_num:
+    annex_num = 0
 
+if int(annex_num) <= 5:
+    check_list = url_dict_new[1:5]
+    if len(check_list) == 4:
+        is_word_exist = False
+        for img_url in check_list:
+            res_text = get_ocr_text(img_url)
+            if res_text.get('code', 'N') == 'Y':
+                ocr_detail = res_text.get("details", [])[0]
+                title_text = ocr_detail.get("total_text", "")
+                if title_text:
+                    check_text = title_text[:50]
+                    if '物资采购付款申请单' in check_text:
+                        is_word_exist = True
+                        break
+        if is_word_exist:
+            business_invoice_no = baseInfo.get('业务单据号')
+            if business_invoice_no not in ['', ' ', '...']:
+                advice += '业务单号完整；'
+            else:
+                advice += '【请核查业务单号】；'
 
 # try:
 # for i in url_dict['images']['N']:
@@ -461,7 +579,9 @@ for url_index, url in enumerate(url_dict_new):
                     bearing_flag = 0
                 else:
                     # advice = advice + "【购买方名称与费用承担公司不一致】；"
-                    bearing_flag = 1
+                    # bearing_flag = 1
+                    (is_, diff_place) = check_field(buyer, costBearingcompany)
+                    advice += '【请核查购买方名称，第{}个不同】；'.format(diff_place)
                     question_list.append(url_index)
                 # 纳税人识别号
                 buyer_tax_id = item['details'].get('buyer_tax_id', '')
@@ -478,7 +598,8 @@ for url_index, url in enumerate(url_dict_new):
                         taxnumber_flag = 0
                     else:
                         # advice = advice + "【税号不一致】；"
-                        taxnumber_flag = 1
+                        # taxnumber_flag = 1
+                        advice += '【请核查税号，OCR显示{}】'.format(str(buyer_tax_id))
                         question_list.append(url_index)
 
                 try:
@@ -546,7 +667,9 @@ for url_index, url in enumerate(url_dict_new):
                                     print("收款银行与发票影像中的销售方开户行一致")
                                 else:
                                     # advice = advice + "第{}张影像中收款银行与发票影像中的销售方开户行不一致；".format(url_index)
-                                    receivebank_flag = 1
+                                    # receivebank_flag = 1
+                                    (is_, diff_place) = check_field(seller_bank, receivingBank)
+                                    advice += '【请核查收款银行，第{}个不同】；'.format(diff_place)
                                     question_list.append(url_index)
                     # 付款人母分公司对应
                     sub_company_col = 5
@@ -572,7 +695,9 @@ for url_index, url in enumerate(url_dict_new):
                             print("第{}张影像中收款人与发票中的销售方名称一致".format(url_index))
                         else:
                             # advice = advice + "第{}张影像中收款人与发票中的销售方名称不一致；".format(url_index)
-                            seller_flag = 1
+                            # seller_flag = 1
+                            (is_, diff_place) = check_field(payee, seller)
+                            advice += '【请核查收款人，第{}个不同】；'.format(diff_place)
                             question_list.append(url_index)
 
                     # if receivingBank == seller_bank:
@@ -588,7 +713,9 @@ for url_index, url in enumerate(url_dict_new):
                             print("收款账户与发票影像中的销售方账号一致")
                         else:
                             # advice = advice + "第{}张影像中发票收款账户与发票影像中的销售方账号不一致；".format(url_index)
-                            collectionAccount_flag = 1
+                            # collectionAccount_flag = 1
+                            (is_, diff_place) = check_field(seller_account.strip(), collectionAccount.strip())
+                            advice += '【请核查收款账户，第{}个不同】；'.format(diff_place)
                             question_list.append(url_index)
                     except Exception as e:
                         # print(e)
@@ -652,12 +779,12 @@ for url_index, url in enumerate(url_dict_new):
 # HLT修改后逻辑
 if bearing_flag == 0:
     advice += '购买方名称与费用承担公司一致；'
-elif bearing_flag == 1:
-    advice += '【购买方名称与费用承担公司不一致】；'
+# elif bearing_flag == 1:
+#     advice += '【购买方名称与费用承担公司不一致】；'
 if taxnumber_flag == 0:
     advice += '税号一致；'
-elif taxnumber_flag == 1:
-    advice += '【税号不一致】；'
+# elif taxnumber_flag == 1:
+#     advice += '【税号不一致】；'
 if seal_flag == 0:
     advice += '发票有盖章；'
 elif seal_flag == 1:
@@ -668,16 +795,16 @@ elif formname_flag == 1:
     advice += '【发票没有发票联】；'
 if receivebank_flag == 0:
     advice += '收款银行与发票影像中的销售方开户行一致；'
-elif receivebank_flag == 1:
-    advice += '【收款银行与发票影像中的销售方开户行不一致】；'
+# elif receivebank_flag == 1:
+#     advice += '【收款银行与发票影像中的销售方开户行不一致】；'
 if seller_flag == 0:
     advice += '收款人与发票中的销售方名称一致；'
-elif seller_flag == 1:
-    advice += '【收款人与发票中的销售方名称不一致】；'
+# elif seller_flag == 1:
+#     advice += '【收款人与发票中的销售方名称不一致】；'
 if collectionAccount_flag == 0:
     advice += '收款账户与发票影像中的销售方账号一致；'
-elif collectionAccount_flag == 1:
-    advice += '【收款账户与发票影像中的销售方账号不一致】；'
+# elif collectionAccount_flag == 1:
+#     advice += '【收款账户与发票影像中的销售方账号不一致】；'
 if flight_flag == 0:
     advice += '机票或行程单正常；'
 elif flight_flag == 1:
@@ -702,7 +829,6 @@ moneyFee = moneyFee.replace(',', '')
 finalPayTax = moneyFee
 final_pay_tax = round(float(finalPayTax), 2)
 
-
 ## 只影响对外
 if invoice_exists:
     if '对外付款单' in data['data'].get('current_title'):
@@ -722,6 +848,7 @@ if invoice_exists:
         if '对外付款单' in data['data'].get('current_title'):
             advice += '总金额一致；'
     if round(taxSum, 2) != round(final_pay_tax, 2):
+        advice += '【请核查税额，OCR显示{}】；'.format(str(round(taxSum, 2)))
         delta = abs(round(final_pay_tax - taxSum, 2))
         advice += '【请核查税额, 差额%s】；' % str(delta)
 # 2021/1/15 ------------------------------
@@ -843,6 +970,8 @@ for item in L:
     approveopinions = approveopinions.replace(item, newItem)
 
 approveopinions = approveopinions.replace('找不到封面页；请核实；', '【找不到封面页，请核实】；')
+if approveopinions.find('机器人审批意见：') < 0:
+    approveopinions = '机器人审批意见：' + approveopinions
 
 pattern1 = re.compile(r'([^【】]*)(【[^【】]*?】)([^【】]*)')
 pattern2 = re.compile(r'(机器人审批意见：)(.*)')

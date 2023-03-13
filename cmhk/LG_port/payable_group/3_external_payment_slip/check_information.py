@@ -5,9 +5,10 @@ import json
 import os
 import re
 import pandas as pd
-
+import requests
+from requests_toolbelt import MultipartEncoder
 # ARGS:
-with open(r"C:\Users\Administrator\Downloads\今日测试\15080008-GXAP-20221118-0023\审批流.json", encoding='utf-8') as f:
+with open(r"C:\应付组日志\ocr与审批流运行数据\15080008-GXAP-20230214-0001\获取网页表格.json.json", encoding='utf-8') as f:
     flow = f.read()
 
 data = json.loads(flow)
@@ -15,6 +16,8 @@ log_dir = data['config'].get('log_dir')
 home_dir = data['config'].get('home_dir')
 No = data['data']['baseInfo']['单据编号']
 invoice_dir = os.path.join(os.path.join(log_dir, 'ocr与审批流运行数据'), No)
+
+DEBUG = __name__ == '__main__'
 if not os.path.exists(invoice_dir):
     os.makedirs(invoice_dir)
 
@@ -44,10 +47,10 @@ web_flow_data = list(map(lambda x: dict(zip(web_table_header, x)), web_table_dat
 
 result = []
 if len(web_flow_data) == 0:
-    result.append('提示：机器人审批意见：【网页取数异常，超时未取到网页审批流表格】；')
+    result.append('【网页取数异常，超时未取到网页审批流表格】')
 
 if data['data']['not_find_company']:
-    result.append('提示：机器人审批意见：【审批矩阵找不到该公司】；')
+    result.append('【审批矩阵找不到该公司】')
 verifyflows = data['data'].get('verifyflow', [])
 
 
@@ -82,9 +85,9 @@ merchant_name = {}
 exclude_name = ['集团公共客商', '', ' ', '\xa0']
 payee = itemDict.get('收款人')
 
-supplier = list(filter(lambda supply: supply not in exclude_name, itemDict.get('供货商', [])))
+supplier = list(filter(lambda supply: supply not in exclude_name, itemDict.get('供应商', [])))
 if supplier:
-    merchant_name.setdefault('供货商', supplier)
+    merchant_name.setdefault('供应商', supplier)
 customer = list(filter(lambda cust: cust not in exclude_name, itemDict.get('客户', [])))
 if customer:
     merchant_name.setdefault('客户', customer)
@@ -151,6 +154,57 @@ else:
         pay_comment = '线上付款；'
     else:
         result.append('【补充线下付款申请】')
+
+baseInfo = data['data']['baseInfo']
+url_dict_new = data['data'].get('imgN', [])
+# 2.13 物资采购付款申请单
+annex_num = baseInfo.get('附件数')
+if not annex_num:
+    annex_num = 0
+
+def get_ocr_text(img_url: str) -> dict:
+    if DEBUG:
+        request_url = "https://openapi.cmft.com/gateway/general1/1.0.0/api/pdfrec"
+    else:
+        request_url = "http://openapi.cmft.com:8080/gateway/general1/1.0.0/api/pdfrec"
+
+    payload = MultipartEncoder(
+        fields={
+            "file": ("img.jpg", requests.get(img_url).content),
+            "content": "multipart/form-data"
+        }
+    )
+
+    print(payload.content_type)
+    header = {
+        "Authorization": "ACCESSCODE 142717D9360287ED5BD1D03E1B6805D2",
+        "x-Gateway-APIKey": "b9180959-bb39-4f58-935a-bacc6a80d16c",
+        "Content-Type": payload.content_type,
+    }
+
+    response = requests.post(request_url, data=payload, headers=header)
+    return response.json()
+
+if int(annex_num) <= 5:
+    check_list = url_dict_new[1:5]
+    if len(check_list) > 0:
+        is_word_exist = False
+        for img_url in check_list:
+            res_text = get_ocr_text(img_url)
+            if res_text.get('code', 'N') == 'Y':
+                ocr_detail = res_text.get("details", [])[0]
+                title_text = ocr_detail.get("total_text", "")
+                if title_text:
+                    check_text = title_text[:50]
+                    if '物资采购付款申请单' in check_text:
+                        is_word_exist = True
+                        break
+        if is_word_exist:
+            business_invoice_no = baseInfo.get('业务单据号')
+            if business_invoice_no not in ['', ' ', '...']:
+                pay_comment += '业务单号完整；'
+            else:
+                result.append( '【请核查业务单号】')
 
 # 改动
 
@@ -303,7 +357,8 @@ if len(verifyflows) > 0:
         resultSet.remove('不在审批流中；')
 
 else:
-    result.append(data['data']['advice'][0])
+    # result.append(data['data']['advice'][0])
+    pass
 
 if len(result) > 0 and result[0].startswith('提示'):
     # 去掉提示
@@ -338,6 +393,8 @@ else:
             if '请核查' in res:
                 is_merchant_inspect_exist = True
             if '未找到' in res:
+                is_approval_process = True
+            if '审批矩阵找不到该公司' in res:
                 is_approval_process = True
         if is_approval_process:
             if is_merchant_inspect_exist:

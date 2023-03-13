@@ -7,7 +7,7 @@ import traceback
 import os
 
 # ARGS:
-with open(r"C:\Users\Administrator\Downloads\48500001-GXAP-20221220-0016\查找审批流前.json.json") as f:
+with open(r"C:\Users\Administrator\Downloads\48500010-GXAP-20230215-0007\查找审批流前.json.json") as f:
     flow = f.read()
 # ------------------
 

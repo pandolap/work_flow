@@ -24,13 +24,13 @@ from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, OneCellAnchor
 dirs = {
     'input': r'C:\\RPA\\中外运_博世叫料\\input',
     'output': r'C:\\RPA\\中外运_博世叫料\\output',
-    'runtime': r'C:\\RPA\\中外运_博世叫料\\output\\20230201',
+    'runtime': r'C:\\RPA\\中外运_博世叫料\\output\\20230310',
     'output_back': r'C:\\RPA\\中外运_博世叫料\\output_back',
-    'runtime_back': r'C:\\RPA\\中外运_博世叫料\\output_back\\20230201',
-    'log': r'C:\\RPA\\中外运_博世叫料\\output\\20230201\\log',
-    'screenshot': r'C:\\RPA\\中外运_博世叫料\\output\\20230201\\err_img',
-    'download': r'C:\\RPA\\中外运_博世叫料\\output\\20230201\\download',
-    'supply_order': r'C:\\RPA\\中外运_博世叫料\\output\\20230201\\order'
+    'runtime_back': r'C:\\RPA\\中外运_博世叫料\\output_back\\20230310',
+    'log': r'C:\\RPA\\中外运_博世叫料\\output\\20230310\\log',
+    'screenshot': r'C:\\RPA\\中外运_博世叫料\\output\\20230310\\err_img',
+    'download': r'C:\\RPA\\中外运_博世叫料\\output\\20230310\\download',
+    'supply_order': r'C:\\RPA\\中外运_博世叫料\\output\\20230310\\order'
 }
 
 # 邮箱附件地址
@@ -44,12 +44,12 @@ supplier_email = {
 }
 # 文件映射
 file_dict = {
-    "attach": r"C:\RPA\中外运_博世叫料\output\20230201\download\20230131_SAP_97506873.xlsx",
-    "export": r"C:\\RPA\\中外运_博世叫料\\output\\20230201\\download\\111平台-BSZZ01-库存即时报表（自用）.xlsx",
-    "template": r"C:\\RPA\\中外运_博世叫料\\output\\20230201\\原材料入库模板.xlsx",
-    "supply": r"C:\\RPA\\中外运_博世叫料\\output\\20230201\\供应商送货单.xlsx",
-    "material": r"C:\\RPA\\中外运_博世叫料\\output\\20230201\\原材料需求叫料.xlsx",
-    "not_receipt": r"C:\\RPA\\中外运_博世叫料\\output\\20230201\\download\\已叫料但未收货.xlsx"
+    "attach": r"C:\RPA\中外运_博世叫料\output\20230310\download\20230310_SAP_97506873.xlsx",
+    "export": r"C:\\RPA\\中外运_博世叫料\\output\\20230310\\download\\111平台-BSZZ01-库存即时报表（自用）.xlsx",
+    "template": r"C:\\RPA\\中外运_博世叫料\\output\\20230310\\原材料入库模板.xlsx",
+    "supply": r"C:\\RPA\\中外运_博世叫料\\output\\20230310\\供应商送货单.xlsx",
+    "material": r"C:\\RPA\\中外运_博世叫料\\output\\20230310\\原材料需求叫料.xlsx",
+    "not_receipt": r"C:\\RPA\\中外运_博世叫料\\output\\20230310\\download\\已叫料但未收货.xlsx"
 }
 # 缩写映射
 abbr_dict = {
@@ -167,7 +167,7 @@ def copy_excel_data(from_file, to_file, to_sheet=None, from_row=0, is_cover=True
     :param to_sheet: 拷贝到的表格sheet名默认为第一个
     :param from_row: 数据来源从第几行开始
     :param is_cover: 拷贝是否覆盖原有数据行
-    :param copy_area: 拷贝来源的范围列入："A,C,D:Q"
+    :param copy_area: 拷贝来源的范围，例如："A,C,D:Q"
     """
     # 检测文件的正确性
     (is_exist, files) = check_file_exist(from_file, to_file)
@@ -232,18 +232,18 @@ def subtotal_data(supplier_name, supplier_abbr, group_data, refer):
         sort_num = int(row[1])
 
         # 获取共用料号数量
-        query_condition = "共用二级料号=='{}'".format(goods_code)
-        share_num = refer.query(query_condition).get("需求数量")
+        # query_condition = "共用二级料号=='{}'".format(goods_code)
+        # share_num = refer.query(query_condition).get("需求数量")
         # 判断共用料号是否存在
-        if len(share_num) == 1:
-            share_num = int(share_num)
-        else:
-            share_num = 0
+        # if len(share_num) == 1:
+        #     share_num = int(share_num)
+        # else:
+        #     share_num = 0
 
         # 获取原材料需求数量
-        need_amount = share_num
-        if share_num == 0:
-            need_amount = sort_num - stock
+        # need_amount = share_num
+        # if share_num == 0:
+        need_amount = sort_num - stock
 
         # 判断需求数量是否大于0
         if need_amount > 0:
@@ -289,11 +289,13 @@ def get_barcode(code, img_path):
     encode = Code128(code, writer=ImageWriter())
     file_path = os.path.join(img_path, code)
     encode.save(file_path, options={
-        'font_size': 3,
+        'font_size': 4,
         'quiet_zone': 1,
         'module_width': 0.173,
         'module_height': 4,
-        'text_distance': 1.3
+        'text_distance': 1.3,
+        'write_text': True,
+        'center_text': True
     })
     # encode = Code128Encoder(code)
     # encode.save(img_path)
@@ -405,6 +407,17 @@ def set_print_fmt(supply: str) -> None:
 def generate_supply_order(supply_name, supply_data, supply_file, to_dir):
     sort_data = sorted(supply_data, key=lambda x: x.get("外部订单号"))
     no_list = set([data.get("外部订单号") for data in sort_data])
+    # NEW~ 客户要求新加一个对相同库位进行数据合并，库位取第一个
+    # material_ref = [single.get("货品代码") for single in sort_data]
+    # dedup_ = set(material_ref)
+    # if len(material_ref) != len(dedup_):
+    #     pass
+    # filter_ = dict()
+    # for v in sort_data:
+    #     # 生成一个key
+    #     x_no = v.get("外部订单号")
+    #     x_code = v.get("货品代码")
+    #     k = "{},{}".format(x_no, x_code)
     supply_list = []
     for no in no_list:
         # 生成文件名
@@ -454,7 +467,7 @@ def make_storage_template(tool, template, supply_file, to_dir):
             supplier_type = "王子"
         group_data = df_pivot.query("供应商 == ['{}']".format(supplier_type))
         # 增加一个参照数据
-        refer_data = pd.read_excel(tool, sheet_name="共用料号", usecols="A,E")
+        refer_data = pd.read_excel(tool, sheet_name="共用料号明细", usecols="A,B")
         tmp = subtotal_data(k, v, group_data, refer_data)
         # 生成供应单
         file_list = generate_supply_order(k, tmp, supply_file, to_dir)
@@ -466,7 +479,7 @@ def make_storage_template(tool, template, supply_file, to_dir):
         supply_list.setdefault(k, [zip_f])
         export_data.extend(tmp)
     sort_data = sorted(export_data, key=lambda x: x.get("外部订单号"))
-    # 导入模板
+    # 导入模板 将这部分抽离出去
     load_template(template, sort_data)
     return supply_list
 
@@ -478,11 +491,11 @@ def get_formula_list(row):
     total = "=SUM(B{num}:O{num})".format(num=row)
     formulas.append(total)
     # 成品库存
-    finish_inventory = "=IFERROR(VLOOKUP(A{num},原材料、成品库存透视表!$A$1:$C$1000,2,0),0)".format(num=row)
+    finish_inventory = "=IFERROR(VLOOKUP(A{num},原材料、成品库存透视表!$A$1:$C$10000,2,0),0)".format(num=row)
     formulas.append(finish_inventory)
     # 1-4订单 -修正为-> 分料数量，不再分开发送
     order_formula = "=MAX(IF(ISERROR(VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*14),(P{num})," \
-                    "VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*14)-Q{num})".format(num=row)
+                    "VLOOKUP(A{num},固定需求料号!$A$1:$B$16,2,0)*14))-Q{num}".format(num=row)
     formulas.append(order_formula)
     return formulas
 
@@ -563,7 +576,7 @@ def statistical_data(files, in_dirs):
         copy_excel_data(export_excel, material_tool, "系统库存导出数据", copy_area="B,T")
         # 获取已叫料但未收货数据
         not_receipt_excel = files.get("not_receipt")
-        copy_excel_data(not_receipt_excel, material_tool, "系统库存导出数据", from_row=1, is_cover=False, copy_area="D,E")
+        copy_excel_data(not_receipt_excel, material_tool, "系统库存导出数据", is_cover=False, copy_area="D,E")
         # 4、对工具表格进行刷数据
         excel_refresh(material_tool)
         excel_refresh(material_tool)

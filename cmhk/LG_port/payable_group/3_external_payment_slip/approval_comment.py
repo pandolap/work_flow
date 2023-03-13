@@ -2,7 +2,7 @@
 # -*- coding: UTF-8 -*-
 import json
 
-with open(r"C:\Users\Administrator\Downloads\3563-GXAP-20221215-0026\3563-GXAP-20221215-0026_pre.json") as f:
+with open(r"C:\Users\Administrator\Downloads\4251-GXAP-20230208-0005\4251-GXAP-20230208-0005_pre.json") as f:
     flow = f.read()
 data = json.loads(flow)
 approveopinions = data['data'].get('verifyResult', '')

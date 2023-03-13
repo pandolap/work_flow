@@ -1,19 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: UTF-8 -*-
 
-# 工作目录配置初始化及检查
-
 import os
 import shutil
 import pandas as pd
 from datetime import datetime
-
-import json
-from util.config_util import get_config
-
-# 入参
-# config = config_dict
-config = get_config().get("config")
 
 
 def read_setting(setting_file):
@@ -61,7 +52,7 @@ def runtime_dir_create(target_dir):
     return current_dir
 
 
-def flow_init(work_dir):
+def init(work_dir):
     # 创建一个目录字典
     dirs = dict()
     # 流程输出目录
@@ -73,47 +64,53 @@ def flow_init(work_dir):
     check_dir(output_back_dir, True, False)
     current_back_dir = os.path.join(output_back_dir, "output_{}".format(datetime.now().strftime("%Y%m%d-%H%M%S")))
     check_dir(current_back_dir, True)
-    # 当前运行日志目录
-    log_dir = os.path.join(current_dir, "log")
-    check_dir(log_dir, True)
     # 运行截图目录
     err_img_dir = os.path.join(current_dir, "err_img")
     check_dir(err_img_dir, True)
-    # 下载文件目录
+    # 判断是否有运行日志
+    runtime_log_path = os.path.join(current_dir, "runtime.log")
     download_dir = os.path.join(current_dir, "download")
-    check_dir(download_dir, True)
-    # 供货单目录
-    order_dir = os.path.join(current_dir, "order")
-    check_dir(order_dir, True)
+    if os.path.exists(runtime_log_path):
+        # 下载文件目录
+        is_flow_success = False
+        with open(runtime_log_path, encoding="utf-8") as f:
+            log_text = f.read()
+        last_row = log_text.split("\n")[-1]
+        if "执行完成" in last_row:
+            is_flow_success = True
+        if is_flow_success:
+            check_dir(download_dir, True)
+        else:
+            check_dir(download_dir, True, False)
+    else:
+        # 下载文件目录
+        check_dir(download_dir, True)
+
     # 将路径写入字典中
     dirs.setdefault("input", os.path.join(work_dir, "input"))
     dirs.setdefault("output", output_dir)
     dirs.setdefault("runtime", current_dir)
     dirs.setdefault("output_back", output_back_dir)
     dirs.setdefault("runtime_back", current_back_dir)
-    dirs.setdefault("log", log_dir)
     dirs.setdefault("screenshot", err_img_dir)
     dirs.setdefault("download", download_dir)
-    dirs.setdefault("supply_order", order_dir)
 
     # copy模板文件
     input_dir = os.path.join(work_dir, "input")
     _template = os.path.join(input_dir, "原材料入库模板.xlsx")
-    _supply = os.path.join(input_dir, "供应商送货单.xlsx")
     _material = os.path.join(input_dir, "原材料需求叫料.xlsx")
     _setting = os.path.join(input_dir, "供货商邮箱配置.xlsx")
+
     template = os.path.join(current_dir, "原材料入库模板.xlsx")
-    supply = os.path.join(current_dir, "供应商送货单.xlsx")
     material = os.path.join(current_dir, "原材料需求叫料.xlsx")
     setting = os.path.join(current_dir, "供货商邮箱配置.xlsx")
-    shutil.copyfile(_supply, supply)
+
     shutil.copyfile(_template, template)
     shutil.copyfile(_material, material)
     shutil.copyfile(_setting, setting)
 
     files = {
         "template": template,
-        "supply": supply,
         "material": material,
         "setting": setting
     }
@@ -134,15 +131,13 @@ def check_work_dir(in_config):
         raise Exception("程序异常-工作目录检查|{e}".format(e=de))
     except Exception as e:
         raise Exception("程序异常-工作目录检查-未知错误|{e}".format(e=e))
-    return flow_init(work_dir)
+    return init(work_dir)
 
-with open("") as f:
-    f.readline(-1)
 
-# 执行
 # 获取文件和文件夹映射
 (dir_dict, file_dict) = check_work_dir(config)
 # 获取邮箱和缩写映射
 (supplier_email, abbr_dict) = read_setting(file_dict.get("setting"))
 
-print(json.dumps(dir_dict, indent=2, ensure_ascii=False))
+config_dict = {}
+pass

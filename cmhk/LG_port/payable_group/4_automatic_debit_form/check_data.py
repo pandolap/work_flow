@@ -9,7 +9,7 @@ import os
 import traceback
 import datetime
 
-with open(r"C:\Users\Administrator\Downloads\40000001-FY-20230111-0004\40000001-FY-20230111-0004_自动扣款审批流.json", 'r', encoding='utf-8') as f:
+with open(r"C:\Users\Administrator\Downloads\3923-FY-20230203-0001\3923-FY-20230203-0001_自动扣款审批流.json", 'r', encoding='utf-8') as f:
     flow = f.read()
 data = json.loads(flow)
 
@@ -140,7 +140,7 @@ try:
     compareApproval(data)
 
     # data["data"]["advice"].insert(0, '机器人试运行，审批意见：')
-    if '审批流程无误' in data["data"]["advice"]:
+    if '审批流程无误；' in data["data"]["advice"]:
         data['data']['verifyResult'] = '机器人试运行，审批意见：' + ''.join(data['data']['advice'])
     else:
         if not data['data']['advice']:
